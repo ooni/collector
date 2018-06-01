@@ -7,6 +7,10 @@ import (
 	"github.com/ooni/collector/collector/util"
 )
 
+// ExpiryTimers is a map of timers keyed to the ReportID. These are used to
+// ensure that after a certain amount of time has elapsed reports are closed
+var ExpiryTimers = make(map[string]*time.Timer)
+
 // BackendExtra is serverside extra metadata
 type BackendExtra struct {
 	SubmissionTime time.Time `json:"submission_time"`

@@ -23,6 +23,8 @@ var log = apexLog.WithFields(apexLog.Fields{
 
 const backendVersion = "2.0.0-alpha"
 
+var reportExpiryTime = time.Duration(8) * time.Hour
+
 func createNewReport(store *storage.Storage, req CreateReportRequest) (string, error) {
 	reportID := report.GenReportID(req.ProbeASN)
 	tmpPath := filepath.Join(paths.TempReportDir(), reportID)
@@ -41,6 +43,10 @@ func createNewReport(store *storage.Storage, req CreateReportRequest) (string, e
 	}
 	store.SetReport(&meta)
 	os.OpenFile(tmpPath, os.O_RDONLY|os.O_CREATE, 0700)
+
+	report.ExpiryTimers[reportID] = time.AfterFunc(reportExpiryTime, func() {
+		CloseReport(store, reportID)
+	})
 
 	return meta.ReportID, nil
 }
@@ -122,6 +128,8 @@ func addBackendExtra(meta *report.Metadata, entry *report.MeasurementEntry) {
 }
 
 func writeEntry(store *storage.Storage, entry *report.MeasurementEntry) error {
+	report.ExpiryTimers[entry.ReportID].Reset(reportExpiryTime)
+
 	meta, err := store.GetReport(entry.ReportID)
 	if err != nil {
 		return err
@@ -150,6 +158,7 @@ func writeEntry(store *storage.Storage, entry *report.MeasurementEntry) error {
 	enc := json.NewEncoder(f)
 	err = enc.Encode(entry)
 	if err != nil {
+		log.WithError(err).Error("Failed to encode measurement entry")
 		return err
 	}
 
@@ -201,11 +210,18 @@ func UpdateReportHandler(c *gin.Context) {
 	return
 }
 
-func closeReport(store *storage.Storage, reportID string) error {
+// CloseReport marks the report as closed and moves it into the final reports folder
+func CloseReport(store *storage.Storage, reportID string) error {
+	report.ExpiryTimers[reportID].Reset(reportExpiryTime)
+
 	meta, err := store.GetReport(reportID)
 	if err != nil {
 		return err
 	}
+	if meta.Closed == true {
+		return ErrReportIsClosed
+	}
+
 	dstPath := paths.ClosedReportPath(meta)
 	if meta.EntryCount > 0 {
 		err = os.Rename(meta.ReportFilePath, dstPath)
@@ -217,6 +233,7 @@ func closeReport(store *storage.Storage, reportID string) error {
 		os.Remove(meta.ReportFilePath)
 	}
 	meta.Closed = true
+	report.ExpiryTimers[reportID].Stop()
 
 	if err = store.SetReport(meta); err != nil {
 		return err
@@ -230,7 +247,7 @@ func CloseReportHandler(c *gin.Context) {
 	store := c.MustGet("Storage").(*storage.Storage)
 	reportID := c.Param("reportID")
 
-	err := closeReport(store, reportID)
+	err := CloseReport(store, reportID)
 	if err != nil {
 		// XXX return proper error
 		c.JSON(http.StatusNotAcceptable, gin.H{
