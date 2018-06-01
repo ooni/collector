@@ -71,8 +71,10 @@ func Start() {
 		return
 	}
 
+	// We setup the timers so that pending reports will expire the
+	// ExpiryTimeDuration after the server has been rebooted
 	for _, meta := range reportList {
-		report.ExpiryTimers[meta.ReportID] = time.AfterFunc(time.Duration(8)*time.Hour, func() {
+		report.ExpiryTimers[meta.ReportID] = time.AfterFunc(report.ExpiryTimeDuration, func() {
 			handler.CloseReport(store, meta.ReportID)
 		})
 	}

@@ -23,8 +23,6 @@ var log = apexLog.WithFields(apexLog.Fields{
 
 const backendVersion = "2.0.0-alpha"
 
-var reportExpiryTime = time.Duration(8) * time.Hour
-
 func createNewReport(store *storage.Storage, req CreateReportRequest) (string, error) {
 	reportID := report.GenReportID(req.ProbeASN)
 	tmpPath := filepath.Join(paths.TempReportDir(), reportID)
@@ -44,7 +42,7 @@ func createNewReport(store *storage.Storage, req CreateReportRequest) (string, e
 	store.SetReport(&meta)
 	os.OpenFile(tmpPath, os.O_RDONLY|os.O_CREATE, 0700)
 
-	report.ExpiryTimers[reportID] = time.AfterFunc(reportExpiryTime, func() {
+	report.ExpiryTimers[reportID] = time.AfterFunc(report.ExpiryTimeDuration, func() {
 		CloseReport(store, reportID)
 	})
 
@@ -128,7 +126,7 @@ func addBackendExtra(meta *report.Metadata, entry *report.MeasurementEntry) {
 }
 
 func writeEntry(store *storage.Storage, entry *report.MeasurementEntry) error {
-	report.ExpiryTimers[entry.ReportID].Reset(reportExpiryTime)
+	report.ExpiryTimers[entry.ReportID].Reset(report.ExpiryTimeDuration)
 
 	meta, err := store.GetReport(entry.ReportID)
 	if err != nil {
@@ -212,7 +210,7 @@ func UpdateReportHandler(c *gin.Context) {
 
 // CloseReport marks the report as closed and moves it into the final reports folder
 func CloseReport(store *storage.Storage, reportID string) error {
-	report.ExpiryTimers[reportID].Reset(reportExpiryTime)
+	report.ExpiryTimers[reportID].Reset(report.ExpiryTimeDuration)
 
 	meta, err := store.GetReport(reportID)
 	if err != nil {

@@ -11,6 +11,9 @@ import (
 // ensure that after a certain amount of time has elapsed reports are closed
 var ExpiryTimers = make(map[string]*time.Timer)
 
+// ExpiryTimeDuration is after how much time a report expires
+var ExpiryTimeDuration = time.Duration(8) * time.Hour
+
 // BackendExtra is serverside extra metadata
 type BackendExtra struct {
 	SubmissionTime time.Time `json:"submission_time"`
