@@ -14,6 +14,7 @@ import (
 	"github.com/ooni/collector/collector/paths"
 	"github.com/ooni/collector/collector/report"
 	"github.com/ooni/collector/storage"
+	"github.com/rs/xid"
 )
 
 var log = apexLog.WithFields(apexLog.Fields{
@@ -120,36 +121,39 @@ func DeprecatedUpdateReportHandler(c *gin.Context) {
 // ErrReportIsClosed indicates the report has already been closed
 var ErrReportIsClosed = errors.New("Report is already closed")
 
-func addBackendExtra(meta *report.Metadata, entry *report.MeasurementEntry) {
+func addBackendExtra(meta *report.Metadata, entry *report.MeasurementEntry) string {
+	measurementID := xid.New().String()
 	entry.BackendVersion = backendVersion
 	entry.BackendExtra.SubmissionTime = meta.LastUpdateTime
+	entry.BackendExtra.MeasurementID = measurementID
+	return measurementID
 }
 
-func writeEntry(store *storage.Storage, entry *report.MeasurementEntry) error {
+func writeEntry(store *storage.Storage, entry *report.MeasurementEntry) (string, error) {
 	report.ExpiryTimers[entry.ReportID].Reset(report.ExpiryTimeDuration)
 
 	meta, err := store.GetReport(entry.ReportID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if meta.Closed == true {
-		return ErrReportIsClosed
+		return "", ErrReportIsClosed
 	}
 	if meta.ProbeCC == "" {
 		if probeCCRegexp.MatchString(entry.ProbeCC) != true {
 			log.Debugf("entry: %v", entry)
 			log.Debugf("Invalid probe cc: \"%s\"", entry.ProbeCC)
-			return errors.New("Invalid probe_cc")
+			return "", errors.New("Invalid probe_cc")
 		}
 		meta.ProbeCC = entry.ProbeCC
 	}
 	meta.LastUpdateTime = time.Now().UTC()
 	meta.EntryCount++
-	addBackendExtra(meta, entry)
+	measurementID := addBackendExtra(meta, entry)
 
 	f, err := os.OpenFile(meta.ReportFilePath, os.O_APPEND|os.O_WRONLY, 0700)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer f.Close()
 
@@ -157,16 +161,17 @@ func writeEntry(store *storage.Storage, entry *report.MeasurementEntry) error {
 	err = enc.Encode(entry)
 	if err != nil {
 		log.WithError(err).Error("Failed to encode measurement entry")
-		return err
+		return "", err
 	}
 
 	if err = store.SetReport(meta); err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return measurementID, nil
 }
 
+// UpdateReportRequest is used to update a report
 type UpdateReportRequest struct {
 	Content report.MeasurementEntry `json:"content" binding:"required"`
 	Format  string                  `json:"format"`
@@ -189,7 +194,7 @@ func UpdateReportHandler(c *gin.Context) {
 	// We overwrite the reportID so that there cannot be any mismatch of th
 	entry.ReportID = reportID
 
-	err = writeEntry(store, &entry)
+	measurementID, err := writeEntry(store, &entry)
 	if err != nil {
 		if err == storage.ErrReportNotFound {
 			log.WithError(err).Debug("report not found error")
@@ -203,7 +208,8 @@ func UpdateReportHandler(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
+		"status":         "success",
+		"measurement_id": measurementID,
 	})
 	return
 }

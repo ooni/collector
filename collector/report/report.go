@@ -17,6 +17,7 @@ var ExpiryTimeDuration = time.Duration(8) * time.Hour
 // BackendExtra is serverside extra metadata
 type BackendExtra struct {
 	SubmissionTime time.Time `json:"submission_time"`
+	MeasurementID  string    `json:"measurement_id"`
 }
 
 // MeasurementEntry is the structure of measurements submitted by an OONI Probe client
