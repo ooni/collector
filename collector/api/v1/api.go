@@ -13,12 +13,18 @@ var log = apexLog.WithFields(apexLog.Fields{
 
 // BindAPI bind all the request handlers and middleware
 func BindAPI(router *gin.Engine) error {
+
+	// This is to support legacy clients
+	router.POST("/report", handler.CreateReportHandler)
+	router.PUT("/report", handler.DeprecatedUpdateReportHandler)
+	router.POST("/report/:reportID", handler.UpdateReportHandler)
+	router.POST("/report/:reportID/close", handler.CloseReportHandler)
+
 	v1 := router.Group("/api/v1")
 
 	v1.POST("/report", handler.CreateReportHandler)
-	v1.PUT("/report", handler.DeprecatedUpdateReportHandler)
-	v1.POST("/report/:report_id", handler.UpdateReportHandler)
-	v1.POST("/report/:report_id/close", handler.CloseReportHandler)
+	v1.POST("/report/:reportID", handler.UpdateReportHandler)
+	v1.POST("/report/:reportID/close", handler.CloseReportHandler)
 
 	return nil
 }
