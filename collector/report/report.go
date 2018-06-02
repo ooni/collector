@@ -17,12 +17,12 @@ import (
 	"github.com/rs/xid"
 )
 
-// ExpiryTimers is a map of timers keyed to the ReportID. These are used to
+// expiryTimers is a map of timers keyed to the ReportID. These are used to
 // ensure that after a certain amount of time has elapsed reports are closed
-var ExpiryTimers = make(map[string]*time.Timer)
+var expiryTimers = make(map[string]*time.Timer)
 
-// ExpiryTimeDuration is after how much time a report expires
-var ExpiryTimeDuration = time.Duration(8) * time.Hour
+// expiryTimeDuration is after how much time a report expires
+var expiryTimeDuration = time.Duration(8) * time.Hour
 
 // BackendExtra is serverside extra metadata
 type BackendExtra struct {
@@ -108,7 +108,7 @@ func CreateNewReport(store *storage.Storage, testName string, probeASN string, s
 	store.SetReport(&meta)
 	os.OpenFile(tmpPath, os.O_RDONLY|os.O_CREATE, 0700)
 
-	ExpiryTimers[reportID] = time.AfterFunc(ExpiryTimeDuration, func() {
+	expiryTimers[reportID] = time.AfterFunc(expiryTimeDuration, func() {
 		CloseReport(store, reportID)
 	})
 
@@ -117,7 +117,7 @@ func CreateNewReport(store *storage.Storage, testName string, probeASN string, s
 
 // CloseReport marks the report as closed and moves it into the final reports folder
 func CloseReport(store *storage.Storage, reportID string) error {
-	ExpiryTimers[reportID].Reset(ExpiryTimeDuration)
+	expiryTimers[reportID].Reset(expiryTimeDuration)
 
 	meta, err := store.GetReport(reportID)
 	if err != nil {
@@ -138,7 +138,7 @@ func CloseReport(store *storage.Storage, reportID string) error {
 		os.Remove(meta.ReportFilePath)
 	}
 	meta.Closed = true
-	ExpiryTimers[reportID].Stop()
+	expiryTimers[reportID].Stop()
 
 	if err = store.SetReport(meta); err != nil {
 		return err
@@ -164,7 +164,7 @@ var probeCCRegexp = regexp.MustCompile("^[A-Z]{2}$")
 
 // WriteEntry will write an entry to report
 func WriteEntry(store *storage.Storage, reportID string, entry *MeasurementEntry) (string, *storage.ReportMetadata, error) {
-	ExpiryTimers[reportID].Reset(ExpiryTimeDuration)
+	expiryTimers[reportID].Reset(expiryTimeDuration)
 
 	meta, err := store.GetReport(reportID)
 	if err != nil {
@@ -221,7 +221,7 @@ func ReloadExpiryTimers(store *storage.Storage) error {
 	// We setup the timers so that pending reports will expire the
 	// ExpiryTimeDuration after the server has been rebooted
 	for _, meta := range reportList {
-		ExpiryTimers[meta.ReportID] = time.AfterFunc(ExpiryTimeDuration, func() {
+		expiryTimers[meta.ReportID] = time.AfterFunc(expiryTimeDuration, func() {
 			CloseReport(store, meta.ReportID)
 		})
 	}
