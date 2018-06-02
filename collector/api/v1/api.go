@@ -24,6 +24,7 @@ func BindAPI(router *gin.Engine) error {
 	v1.POST("/report", handler.CreateReportHandler)
 	v1.POST("/report/:reportID", handler.UpdateReportHandler)
 	v1.POST("/report/:reportID/close", handler.CloseReportHandler)
+	v1.POST("/measurement", handler.SubmitMeasurementHandler)
 
 	return nil
 }

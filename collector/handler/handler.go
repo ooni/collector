@@ -121,8 +121,12 @@ func DeprecatedUpdateReportHandler(c *gin.Context) {
 // ErrReportIsClosed indicates the report has already been closed
 var ErrReportIsClosed = errors.New("Report is already closed")
 
+func genMeasurementID() string {
+	return xid.New().String()
+}
+
 func addBackendExtra(meta *report.Metadata, entry *report.MeasurementEntry) string {
-	measurementID := xid.New().String()
+	measurementID := genMeasurementID()
 	entry.BackendVersion = backendVersion
 	entry.BackendExtra.SubmissionTime = meta.LastUpdateTime
 	entry.BackendExtra.MeasurementID = measurementID
@@ -263,4 +267,51 @@ func CloseReportHandler(c *gin.Context) {
 		"status": "success",
 	})
 	return
+}
+
+// SubmitMeasurementHandler is a handler for submitting a measurement in a
+// single request
+func SubmitMeasurementHandler(c *gin.Context) {
+	store := c.MustGet("Storage").(*storage.Storage)
+	var entry report.MeasurementEntry
+
+	shouldClose := c.DefaultQuery("close", "false") == "true"
+	if err := c.BindJSON(&entry); err != nil {
+		log.WithError(err).Error("failed to bindJSON")
+		return
+	}
+	createReq := CreateReportRequest{
+		SoftwareName:    entry.SoftwareName,
+		SoftwareVersion: entry.SoftwareVersion,
+		TestName:        entry.TestName,
+		TestVersion:     entry.TestVersion,
+		ProbeASN:        entry.ProbeASN,
+	}
+	if err := validateRequest(&createReq); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+	}
+	if entry.ReportID == "" {
+		reportID, err := createNewReport(store, createReq)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": err.Error(),
+			})
+		}
+		entry.ReportID = reportID
+	}
+	measurementID, err := writeEntry(store, &entry)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+	}
+	if shouldClose == true {
+		CloseReport(store, entry.ReportID)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"report_id":      entry.ReportID,
+		"measurement_id": measurementID,
+	})
 }
