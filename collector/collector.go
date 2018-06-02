@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ooni/collector/collector/api/v1"
@@ -59,6 +60,18 @@ func Start() {
 
 	router := gin.Default()
 	router.Use(storageMw.MiddlewareFunc())
+	p := middleware.NewPrometheus("oonicollector")
+	p.ReqCntURLLabelMappingFn = func(c *gin.Context) string {
+		url := c.Request.URL.String()
+		for _, p := range c.Params {
+			if p.Key == "reportID" {
+				url = strings.Replace(url, p.Value, ":reportID", 1)
+				break
+			}
+		}
+		return url
+	}
+	p.Use(router)
 	err = apiv1.BindAPI(router)
 	if err != nil {
 		log.WithError(err).Error("failed to BindAPI")

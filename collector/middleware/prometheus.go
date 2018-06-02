@@ -8,11 +8,16 @@ import (
 	"strconv"
 	"time"
 
+	apexLog "github.com/apex/log"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	log "github.com/sirupsen/logrus"
 )
+
+var log = apexLog.WithFields(apexLog.Fields{
+	"pkg": "middleware",
+	"cmd": "ooni-collector",
+})
 
 var defaultMetricPath = "/metrics"
 
