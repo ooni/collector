@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/ooni/collector/storage"
+	"github.com/ooni/collector/collector/storage"
 )
 
 // GinStorageMiddleware a database aware middleware.

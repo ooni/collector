@@ -4,15 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/ooni/collector/collector/api/v1"
-	"github.com/ooni/collector/collector/handler"
 	"github.com/ooni/collector/collector/middleware"
 	"github.com/ooni/collector/collector/paths"
 	"github.com/ooni/collector/collector/report"
-	"github.com/ooni/collector/storage"
+	"github.com/ooni/collector/collector/storage"
 
 	apexLog "github.com/apex/log"
 	"github.com/facebookgo/grace/gracehttp"
@@ -60,37 +57,12 @@ func Start() {
 
 	router := gin.Default()
 	router.Use(storageMw.MiddlewareFunc())
-	p := middleware.NewPrometheus("oonicollector", handler.CustomMetrics)
-	p.ReqCntURLLabelMappingFn = func(c *gin.Context) string {
-		url := c.Request.URL.String()
-		for _, p := range c.Params {
-			if p.Key == "reportID" {
-				url = strings.Replace(url, p.Value, ":reportID", 1)
-				break
-			}
-		}
-		return url
-	}
-	p.Use(router)
 	err = apiv1.BindAPI(router)
 	if err != nil {
 		log.WithError(err).Error("failed to BindAPI")
 		return
 	}
-
-	reportList, err := store.ListReports()
-	if err != nil {
-		log.WithError(err).Error("failed to list reports")
-		return
-	}
-
-	// We setup the timers so that pending reports will expire the
-	// ExpiryTimeDuration after the server has been rebooted
-	for _, meta := range reportList {
-		report.ExpiryTimers[meta.ReportID] = time.AfterFunc(report.ExpiryTimeDuration, func() {
-			handler.CloseReport(store, meta.ReportID)
-		})
-	}
+	report.ReloadExpiryTimers(store)
 
 	Addr := fmt.Sprintf("%s:%d", viper.GetString("api.address"),
 		viper.GetInt("api.port"))

@@ -1,9 +1,12 @@
 package apiv1
 
 import (
+	"strings"
+
 	apexLog "github.com/apex/log"
 	"github.com/gin-gonic/gin"
 	"github.com/ooni/collector/collector/handler"
+	"github.com/ooni/collector/collector/middleware"
 )
 
 var log = apexLog.WithFields(apexLog.Fields{
@@ -13,6 +16,18 @@ var log = apexLog.WithFields(apexLog.Fields{
 
 // BindAPI bind all the request handlers and middleware
 func BindAPI(router *gin.Engine) error {
+	p := middleware.NewPrometheus("oonicollector", handler.CustomMetrics)
+	p.ReqCntURLLabelMappingFn = func(c *gin.Context) string {
+		url := c.Request.URL.String()
+		for _, p := range c.Params {
+			if p.Key == "reportID" {
+				url = strings.Replace(url, p.Value, ":reportID", 1)
+				break
+			}
+		}
+		return url
+	}
+	p.Use(router)
 
 	// This is to support legacy clients
 	router.POST("/report", handler.CreateReportHandler)

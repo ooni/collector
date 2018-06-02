@@ -4,10 +4,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/dgraph-io/badger"
-	"github.com/ooni/collector/collector/report"
 )
+
+// ReportMetadata contains metadata about the report
+type ReportMetadata struct {
+	ReportID        string
+	ProbeASN        string
+	ProbeCC         string
+	Platform        string
+	TestName        string
+	SoftwareName    string
+	SoftwareVersion string
+	ReportFilePath  string
+	CreationTime    time.Time
+	LastUpdateTime  time.Time
+	EntryCount      int64
+	Closed          bool
+}
 
 // New func implements the storage interface for gorush (https://github.com/appleboy/gorush)
 func New(dir string) *Storage {
@@ -37,7 +53,7 @@ func (s *Storage) Init() error {
 }
 
 // SetReport writes the report metadata to the store
-func (s *Storage) SetReport(m *report.Metadata) error {
+func (s *Storage) SetReport(m *ReportMetadata) error {
 	var err error
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var value []byte
@@ -54,9 +70,9 @@ func (s *Storage) SetReport(m *report.Metadata) error {
 var ErrReportNotFound = errors.New("Report not found")
 
 // GetReport returns a report based on it's reportID
-func (s *Storage) GetReport(reportID string) (*report.Metadata, error) {
+func (s *Storage) GetReport(reportID string) (*ReportMetadata, error) {
 	var (
-		meta report.Metadata
+		meta ReportMetadata
 		err  error
 	)
 
@@ -83,9 +99,9 @@ func (s *Storage) GetReport(reportID string) (*report.Metadata, error) {
 }
 
 // ListReports returns all the reports in the store
-func (s *Storage) ListReports() ([]*report.Metadata, error) {
+func (s *Storage) ListReports() ([]*ReportMetadata, error) {
 	var (
-		reports []*report.Metadata
+		reports []*ReportMetadata
 		err     error
 	)
 
@@ -97,7 +113,7 @@ func (s *Storage) ListReports() ([]*report.Metadata, error) {
 		prefix := []byte("report/")
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			var val []byte
-			var meta report.Metadata
+			var meta ReportMetadata
 			item := it.Item()
 			if val, err = item.Value(); err != nil {
 				return err

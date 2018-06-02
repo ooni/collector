@@ -1,55 +1,22 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
-	"time"
 
 	apexLog "github.com/apex/log"
 	"github.com/gin-gonic/gin"
 	"github.com/ooni/collector/collector/info"
-	"github.com/ooni/collector/collector/paths"
 	"github.com/ooni/collector/collector/report"
-	"github.com/ooni/collector/storage"
+	"github.com/ooni/collector/collector/storage"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rs/xid"
 )
 
 var log = apexLog.WithFields(apexLog.Fields{
 	"pkg": "handler",
 	"cmd": "ooni-collector",
 })
-
-func createNewReport(store *storage.Storage, req CreateReportRequest) (string, error) {
-	reportID := report.GenReportID(req.ProbeASN)
-	tmpPath := filepath.Join(paths.TempReportDir(), reportID)
-	meta := report.Metadata{
-		ReportID:        reportID,
-		TestName:        req.TestName,
-		ProbeASN:        req.ProbeASN,
-		ProbeCC:         "",
-		Platform:        "",
-		SoftwareName:    req.SoftwareName,
-		SoftwareVersion: req.SoftwareVersion,
-		CreationTime:    time.Now().UTC(),
-		LastUpdateTime:  time.Now().UTC(),
-		ReportFilePath:  tmpPath,
-		Closed:          false,
-		EntryCount:      0,
-	}
-	store.SetReport(&meta)
-	os.OpenFile(tmpPath, os.O_RDONLY|os.O_CREATE, 0700)
-
-	report.ExpiryTimers[reportID] = time.AfterFunc(report.ExpiryTimeDuration, func() {
-		CloseReport(store, reportID)
-	})
-
-	return meta.ReportID, nil
-}
 
 // CreateReportRequest what a client sends as a request to create a new report
 type CreateReportRequest struct {
@@ -64,7 +31,6 @@ type CreateReportRequest struct {
 var softwareVersionRegexp = regexp.MustCompile("^[0-9A-Za-z_.+-]+$")
 var testNameRegexp = regexp.MustCompile("^[a-zA-Z0-9_\\- ]+$")
 var probeASNRegexp = regexp.MustCompile("^AS[0-9]+$")
-var probeCCRegexp = regexp.MustCompile("^[A-Z]{2}$")
 
 func validateRequest(req *CreateReportRequest) error {
 	if softwareVersionRegexp.MatchString(req.SoftwareName) != true {
@@ -94,7 +60,7 @@ func CreateReportHandler(c *gin.Context) {
 		return
 	}
 
-	reportID, err := createNewReport(store, req)
+	reportID, err := report.CreateNewReport(store, req.TestName, req.ProbeASN, req.SoftwareName, req.SoftwareVersion)
 	if err != nil {
 		// XXX check this against the spec
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -119,71 +85,6 @@ func DeprecatedUpdateReportHandler(c *gin.Context) {
 	return
 }
 
-// ErrReportIsClosed indicates the report has already been closed
-var ErrReportIsClosed = errors.New("Report is already closed")
-
-func genMeasurementID() string {
-	return xid.New().String()
-}
-
-func addBackendExtra(meta *report.Metadata, entry *report.MeasurementEntry) string {
-	measurementID := genMeasurementID()
-	entry.BackendVersion = info.Version
-	entry.BackendExtra.SubmissionTime = meta.LastUpdateTime
-	entry.BackendExtra.ReportID = meta.ReportID
-	entry.BackendExtra.MeasurementID = measurementID
-	return measurementID
-}
-
-func writeEntry(store *storage.Storage, reportID string, entry *report.MeasurementEntry) (string, error) {
-	report.ExpiryTimers[reportID].Reset(report.ExpiryTimeDuration)
-
-	meta, err := store.GetReport(reportID)
-	if err != nil {
-		return "", err
-	}
-	if meta.Closed == true {
-		return "", ErrReportIsClosed
-	}
-	if meta.ProbeCC == "" {
-		if probeCCRegexp.MatchString(entry.ProbeCC) != true {
-			return "", errors.New("Invalid probe_cc")
-		}
-		meta.ProbeCC = entry.ProbeCC
-	}
-	if meta.Platform == "" && entry.Annotations != nil {
-		annotations := entry.Annotations.(map[string]interface{})
-		platform, ok := annotations["platform"].(string)
-		if ok {
-			meta.Platform = platform
-		}
-	}
-	platformMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.Platform).Inc()
-	countryMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.ProbeCC).Inc()
-	meta.LastUpdateTime = time.Now().UTC()
-	meta.EntryCount++
-	measurementID := addBackendExtra(meta, entry)
-
-	f, err := os.OpenFile(meta.ReportFilePath, os.O_APPEND|os.O_WRONLY, 0700)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	err = enc.Encode(entry)
-	if err != nil {
-		log.WithError(err).Error("Failed to encode measurement entry")
-		return "", err
-	}
-
-	if err = store.SetReport(meta); err != nil {
-		return "", err
-	}
-
-	return measurementID, nil
-}
-
 // UpdateReportRequest is used to update a report
 type UpdateReportRequest struct {
 	Content report.MeasurementEntry `json:"content" binding:"required"`
@@ -204,7 +105,7 @@ func UpdateReportHandler(c *gin.Context) {
 	}
 	entry := req.Content
 
-	measurementID, err := writeEntry(store, reportID, &entry)
+	measurementID, meta, err := report.WriteEntry(store, reportID, &entry)
 	if err != nil {
 		if err == storage.ErrReportNotFound {
 			log.WithError(err).Debug("report not found error")
@@ -217,6 +118,9 @@ func UpdateReportHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	platformMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.Platform).Inc()
+	countryMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.ProbeCC).Inc()
+
 	c.JSON(http.StatusOK, gin.H{
 		"status":         "success",
 		"measurement_id": measurementID,
@@ -224,44 +128,12 @@ func UpdateReportHandler(c *gin.Context) {
 	return
 }
 
-// CloseReport marks the report as closed and moves it into the final reports folder
-func CloseReport(store *storage.Storage, reportID string) error {
-	report.ExpiryTimers[reportID].Reset(report.ExpiryTimeDuration)
-
-	meta, err := store.GetReport(reportID)
-	if err != nil {
-		return err
-	}
-	if meta.Closed == true {
-		return ErrReportIsClosed
-	}
-
-	dstPath := paths.ClosedReportPath(meta)
-	if meta.EntryCount > 0 {
-		err = os.Rename(meta.ReportFilePath, dstPath)
-		if err != nil {
-			return err
-		}
-	} else {
-		// There is no need to keep closed empty reports
-		os.Remove(meta.ReportFilePath)
-	}
-	meta.Closed = true
-	report.ExpiryTimers[reportID].Stop()
-
-	if err = store.SetReport(meta); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // CloseReportHandler moves the report to the report-dir
 func CloseReportHandler(c *gin.Context) {
 	store := c.MustGet("Storage").(*storage.Storage)
 	reportID := c.Param("reportID")
 
-	err := CloseReport(store, reportID)
+	err := report.CloseReport(store, reportID)
 	if err != nil {
 		// XXX return proper error
 		c.JSON(http.StatusNotAcceptable, gin.H{
@@ -303,7 +175,8 @@ func SubmitMeasurementHandler(c *gin.Context) {
 		})
 	}
 	if reportID == "" {
-		rid, err := createNewReport(store, createReq)
+		rid, err := report.CreateNewReport(store, createReq.TestName,
+			createReq.ProbeASN, createReq.SoftwareName, createReq.SoftwareVersion)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": err.Error(),
@@ -311,14 +184,14 @@ func SubmitMeasurementHandler(c *gin.Context) {
 		}
 		reportID = rid
 	}
-	measurementID, err := writeEntry(store, reportID, &entry)
+	measurementID, _, err := report.WriteEntry(store, reportID, &entry)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
 		})
 	}
 	if shouldClose == true {
-		CloseReport(store, reportID)
+		report.CloseReport(store, reportID)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"report_id":      reportID,
