@@ -1,11 +1,13 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/apex/log"
 	"github.com/dgraph-io/badger"
 )
 
@@ -25,6 +27,13 @@ type ReportMetadata struct {
 	Closed          bool
 }
 
+// By default we will expire the report metadata after 30 days
+const (
+	reportExpiryDuration      = 24 * 30 * time.Hour
+	garbageCollectionInterval = 10 * time.Minute
+	discardRatio              = 0.5
+)
+
 // New func implements the storage interface for gorush (https://github.com/appleboy/gorush)
 func New(dir string) *Storage {
 	opts := badger.DefaultOptions
@@ -38,8 +47,10 @@ func New(dir string) *Storage {
 
 // Storage interface implementation for badger
 type Storage struct {
-	opts badger.Options
-	db   *badger.DB
+	opts       badger.Options
+	db         *badger.DB
+	ctx        context.Context
+	cancelFunc context.CancelFunc
 }
 
 // Init checks that the store is usable
@@ -49,6 +60,8 @@ func (s *Storage) Init() error {
 		return err
 	}
 	s.db = db
+	s.ctx, s.cancelFunc = context.WithCancel(context.Background())
+	go s.runGarbageCollection()
 	return nil
 }
 
@@ -60,7 +73,7 @@ func (s *Storage) SetReport(m *ReportMetadata) error {
 		if value, err = json.Marshal(m); err != nil {
 			return err
 		}
-		err = txn.Set([]byte(fmt.Sprintf("report/%s", m.ReportID)), value)
+		err = txn.SetWithTTL([]byte(fmt.Sprintf("report/%s", m.ReportID)), value, reportExpiryDuration)
 		return err
 	})
 	return err
@@ -126,4 +139,37 @@ func (s *Storage) ListReports() ([]*ReportMetadata, error) {
 		return nil
 	})
 	return reports, err
+}
+
+// Close the database cleanly
+func (s *Storage) Close() error {
+	// cancel (db) context
+	s.cancelFunc()
+	// close db
+	err := s.db.Close()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Storage) runGarbageCollection() {
+	ticker := time.NewTicker(garbageCollectionInterval)
+	for {
+		select {
+		case <-ticker.C:
+			err := s.db.RunValueLogGC(discardRatio)
+			if err != nil {
+				// don't report error when gc didn't result in any cleanup
+				if err == badger.ErrNoRewrite {
+					log.Debugf("Badger GC: %v", err)
+				} else {
+					log.Errorf("Badger GC failed: %v", err)
+				}
+			}
+		case <-s.ctx.Done():
+			return
+		}
+	}
+
 }
