@@ -11,6 +11,7 @@ import (
 
 	apexLog "github.com/apex/log"
 	"github.com/gin-gonic/gin"
+	"github.com/ooni/collector/collector/info"
 	"github.com/ooni/collector/collector/paths"
 	"github.com/ooni/collector/collector/report"
 	"github.com/ooni/collector/storage"
@@ -22,8 +23,6 @@ var log = apexLog.WithFields(apexLog.Fields{
 	"pkg": "handler",
 	"cmd": "ooni-collector",
 })
-
-const backendVersion = "2.0.0-alpha"
 
 func createNewReport(store *storage.Storage, req CreateReportRequest) (string, error) {
 	reportID := report.GenReportID(req.ProbeASN)
@@ -105,7 +104,7 @@ func CreateReportHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"backend_version":   backendVersion,
+		"backend_version":   info.Version,
 		"report_id":         reportID,
 		"supported_formats": []string{"json"},
 	})
@@ -129,7 +128,7 @@ func genMeasurementID() string {
 
 func addBackendExtra(meta *report.Metadata, entry *report.MeasurementEntry) string {
 	measurementID := genMeasurementID()
-	entry.BackendVersion = backendVersion
+	entry.BackendVersion = info.Version
 	entry.BackendExtra.SubmissionTime = meta.LastUpdateTime
 	entry.BackendExtra.ReportID = meta.ReportID
 	entry.BackendExtra.MeasurementID = measurementID
