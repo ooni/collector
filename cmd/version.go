@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// VersionCmd is the command used to output the version of orchestra
-var VersionCmd = &cobra.Command{
+// versionCmd is the command used to output the version of orchestra
+var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number of OONI Collector",
 	Long:  `All software has versions. This is OONI Collector'.`,
@@ -16,4 +16,8 @@ var VersionCmd = &cobra.Command{
 		fmt.Println(info.FullVersionString())
 		return nil
 	},
+}
+
+func init() {
+	RootCmd.AddCommand(versionCmd)
 }
