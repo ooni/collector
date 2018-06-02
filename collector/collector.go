@@ -68,9 +68,15 @@ func Start() {
 		viper.GetInt("api.port"))
 	log.Infof("starting on %s", Addr)
 
-	s := &http.Server{
-		Addr:    Addr,
-		Handler: router,
+	servers := []*http.Server{
+		&http.Server{
+			Addr:    Addr,
+			Handler: router,
+		},
 	}
-	gracehttp.Serve(s)
+	opt := gracehttp.PreStartProcess(func() error {
+		return store.Close()
+	})
+	gracehttp.ServeWithOptions(servers, opt)
+
 }
