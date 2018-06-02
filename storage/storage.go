@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/dgraph-io/badger"
 	"github.com/ooni/collector/collector/report"
@@ -43,7 +44,7 @@ func (s *Storage) SetReport(m *report.Metadata) error {
 		if value, err = json.Marshal(m); err != nil {
 			return err
 		}
-		err = txn.Set([]byte(m.ReportID), value)
+		err = txn.Set([]byte(fmt.Sprintf("report/%s", m.ReportID)), value)
 		return err
 	})
 	return err
@@ -64,7 +65,7 @@ func (s *Storage) GetReport(reportID string) (*report.Metadata, error) {
 			item *badger.Item
 			val  []byte
 		)
-		if item, err = txn.Get([]byte(reportID)); err != nil {
+		if item, err = txn.Get([]byte(fmt.Sprintf("report/%s", reportID))); err != nil {
 			if err == badger.ErrKeyNotFound {
 				return ErrReportNotFound
 			}
@@ -93,7 +94,8 @@ func (s *Storage) ListReports() ([]*report.Metadata, error) {
 		opts.PrefetchSize = 100
 		it := txn.NewIterator(opts)
 		defer it.Close()
-		for it.Rewind(); it.Valid(); it.Next() {
+		prefix := []byte("report/")
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			var val []byte
 			var meta report.Metadata
 			item := it.Item()
