@@ -60,9 +60,7 @@ func Start() {
 
 	router := gin.Default()
 	router.Use(storageMw.MiddlewareFunc())
-	p := middleware.NewPrometheus("oonicollector", []*middleware.Metric{
-		&handler.PlatformMetric,
-	})
+	p := middleware.NewPrometheus("oonicollector", handler.CustomMetrics)
 	p.ReqCntURLLabelMappingFn = func(c *gin.Context) string {
 		url := c.Request.URL.String()
 		for _, p := range c.Params {

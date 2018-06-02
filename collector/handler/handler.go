@@ -159,7 +159,8 @@ func writeEntry(store *storage.Storage, reportID string, entry *report.Measureme
 			meta.Platform = platform
 		}
 	}
-	PlatformMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.Platform).Inc()
+	platformMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.Platform).Inc()
+	countryMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.ProbeCC).Inc()
 	meta.LastUpdateTime = time.Now().UTC()
 	meta.EntryCount++
 	measurementID := addBackendExtra(meta, entry)
