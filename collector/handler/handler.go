@@ -14,6 +14,7 @@ import (
 	"github.com/ooni/collector/collector/paths"
 	"github.com/ooni/collector/collector/report"
 	"github.com/ooni/collector/storage"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/xid"
 )
 
@@ -32,6 +33,7 @@ func createNewReport(store *storage.Storage, req CreateReportRequest) (string, e
 		TestName:        req.TestName,
 		ProbeASN:        req.ProbeASN,
 		ProbeCC:         "",
+		Platform:        "",
 		SoftwareName:    req.SoftwareName,
 		SoftwareVersion: req.SoftwareVersion,
 		CreationTime:    time.Now().UTC(),
@@ -146,12 +148,18 @@ func writeEntry(store *storage.Storage, reportID string, entry *report.Measureme
 	}
 	if meta.ProbeCC == "" {
 		if probeCCRegexp.MatchString(entry.ProbeCC) != true {
-			log.Debugf("entry: %v", entry)
-			log.Debugf("Invalid probe cc: \"%s\"", entry.ProbeCC)
 			return "", errors.New("Invalid probe_cc")
 		}
 		meta.ProbeCC = entry.ProbeCC
 	}
+	if meta.Platform == "" && entry.Annotations != nil {
+		annotations := entry.Annotations.(map[string]interface{})
+		platform, ok := annotations["platform"].(string)
+		if ok {
+			meta.Platform = platform
+		}
+	}
+	PlatformMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.Platform).Inc()
 	meta.LastUpdateTime = time.Now().UTC()
 	meta.EntryCount++
 	measurementID := addBackendExtra(meta, entry)

@@ -56,6 +56,7 @@ type Metadata struct {
 	ReportID        string
 	ProbeASN        string
 	ProbeCC         string
+	Platform        string
 	TestName        string
 	SoftwareName    string
 	SoftwareVersion string
@@ -66,6 +67,8 @@ type Metadata struct {
 	Closed          bool
 }
 
+// TimestampFormat is the string format for a timestamp, useful for generating
+// report ids
 const TimestampFormat = "20060102T150405Z"
 
 // GenReportID generates a new report id
