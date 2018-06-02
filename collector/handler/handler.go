@@ -129,14 +129,15 @@ func addBackendExtra(meta *report.Metadata, entry *report.MeasurementEntry) stri
 	measurementID := genMeasurementID()
 	entry.BackendVersion = backendVersion
 	entry.BackendExtra.SubmissionTime = meta.LastUpdateTime
+	entry.BackendExtra.ReportID = meta.ReportID
 	entry.BackendExtra.MeasurementID = measurementID
 	return measurementID
 }
 
-func writeEntry(store *storage.Storage, entry *report.MeasurementEntry) (string, error) {
-	report.ExpiryTimers[entry.ReportID].Reset(report.ExpiryTimeDuration)
+func writeEntry(store *storage.Storage, reportID string, entry *report.MeasurementEntry) (string, error) {
+	report.ExpiryTimers[reportID].Reset(report.ExpiryTimeDuration)
 
-	meta, err := store.GetReport(entry.ReportID)
+	meta, err := store.GetReport(reportID)
 	if err != nil {
 		return "", err
 	}
@@ -195,10 +196,7 @@ func UpdateReportHandler(c *gin.Context) {
 	}
 	entry := req.Content
 
-	// We overwrite the reportID so that there cannot be any mismatch of th
-	entry.ReportID = reportID
-
-	measurementID, err := writeEntry(store, &entry)
+	measurementID, err := writeEntry(store, reportID, &entry)
 	if err != nil {
 		if err == storage.ErrReportNotFound {
 			log.WithError(err).Debug("report not found error")
@@ -273,13 +271,17 @@ func CloseReportHandler(c *gin.Context) {
 // single request
 func SubmitMeasurementHandler(c *gin.Context) {
 	store := c.MustGet("Storage").(*storage.Storage)
-	var entry report.MeasurementEntry
+	var (
+		entry    report.MeasurementEntry
+		reportID string
+	)
 
 	shouldClose := c.DefaultQuery("close", "false") == "true"
 	if err := c.BindJSON(&entry); err != nil {
 		log.WithError(err).Error("failed to bindJSON")
 		return
 	}
+	reportID = entry.ReportID
 	createReq := CreateReportRequest{
 		SoftwareName:    entry.SoftwareName,
 		SoftwareVersion: entry.SoftwareVersion,
@@ -292,26 +294,26 @@ func SubmitMeasurementHandler(c *gin.Context) {
 			"error": err.Error(),
 		})
 	}
-	if entry.ReportID == "" {
-		reportID, err := createNewReport(store, createReq)
+	if reportID == "" {
+		rid, err := createNewReport(store, createReq)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": err.Error(),
 			})
 		}
-		entry.ReportID = reportID
+		reportID = rid
 	}
-	measurementID, err := writeEntry(store, &entry)
+	measurementID, err := writeEntry(store, reportID, &entry)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
 		})
 	}
 	if shouldClose == true {
-		CloseReport(store, entry.ReportID)
+		CloseReport(store, reportID)
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"report_id":      entry.ReportID,
+		"report_id":      reportID,
 		"measurement_id": measurementID,
 	})
 }

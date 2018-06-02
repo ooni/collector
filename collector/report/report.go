@@ -18,6 +18,7 @@ var ExpiryTimeDuration = time.Duration(8) * time.Hour
 type BackendExtra struct {
 	SubmissionTime time.Time `json:"submission_time"`
 	MeasurementID  string    `json:"measurement_id"`
+	ReportID       string    `json:"report_id"`
 }
 
 // MeasurementEntry is the structure of measurements submitted by an OONI Probe client
@@ -30,7 +31,7 @@ type MeasurementEntry struct {
 	ReportID             string       `json:"report_id"`
 	TestName             string       `json:"test_name"`
 	TestVersion          string       `json:"test_version"`
-	MeasurementStartTime string       `json:"measurement_start_time"`
+	MeasurementStartTime string       `json:"measurement_start_time,omitempty"`
 	TestStartTime        string       `json:"test_start_time"` // XXX these should actually be time
 	Annotations          interface{}  `json:"annotations"`
 	BackendExtra         BackendExtra `json:"backend_extra"`
