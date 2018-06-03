@@ -6,7 +6,7 @@ import (
 	apexLog "github.com/apex/log"
 	"github.com/gin-gonic/gin"
 	"github.com/ooni/collector/collector/handler"
-	"github.com/ooni/collector/collector/middleware"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
 )
 
 var log = apexLog.WithFields(apexLog.Fields{
@@ -16,7 +16,7 @@ var log = apexLog.WithFields(apexLog.Fields{
 
 // BindAPI bind all the request handlers and middleware
 func BindAPI(router *gin.Engine) error {
-	p := middleware.NewPrometheus("oonicollector", handler.CustomMetrics)
+	p := ginprometheus.NewPrometheus("oonicollector", handler.CustomMetrics)
 	p.ReqCntURLLabelMappingFn = func(c *gin.Context) string {
 		url := c.Request.URL.String()
 		for _, p := range c.Params {

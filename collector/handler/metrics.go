@@ -1,15 +1,15 @@
 package handler
 
-import "github.com/ooni/collector/collector/middleware"
+import ginprometheus "github.com/zsais/go-gin-prometheus"
 
-var platformMetric = middleware.Metric{
+var platformMetric = ginprometheus.Metric{
 	Name:        "platform_count",
 	Description: "Counter of measurements per platform",
 	Type:        "counter_vec",
 	Args:        []string{"platform"},
 }
 
-var countryMetric = middleware.Metric{
+var countryMetric = ginprometheus.Metric{
 	Name:        "country_count",
 	Description: "Counter of measurements per country",
 	Type:        "counter_vec",
@@ -17,7 +17,7 @@ var countryMetric = middleware.Metric{
 }
 
 // CustomMetrics are ooni-collector specific metrics
-var CustomMetrics = []*middleware.Metric{
+var CustomMetrics = []*ginprometheus.Metric{
 	&platformMetric,
 	&countryMetric,
 }
