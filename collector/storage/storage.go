@@ -30,7 +30,7 @@ type ReportMetadata struct {
 // By default we will expire the report metadata after 30 days
 const (
 	reportExpiryDuration      = 24 * 30 * time.Hour
-	garbageCollectionInterval = 10 * time.Minute
+	garbageCollectionInterval = 1 * time.Hour
 	discardRatio              = 0.5
 )
 
