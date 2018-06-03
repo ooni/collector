@@ -23,4 +23,5 @@ func init() {
 	startCmd.PersistentFlags().StringP("address", "", "127.0.0.1", "Which interface we should listen on")
 	viper.BindPFlag("api.port", startCmd.PersistentFlags().Lookup("port"))
 	viper.BindPFlag("api.address", startCmd.PersistentFlags().Lookup("address"))
+	viper.SetDefault("api.admin-password", "changeme")
 }

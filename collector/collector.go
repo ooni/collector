@@ -44,6 +44,14 @@ func Start() {
 	var (
 		err error
 	)
+	if viper.GetBool("core.is-dev") != true {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	adminPassword := viper.GetString("api.admin-password")
+	if adminPassword == "changeme" {
+		log.Warn("api.admin-password is set to the default value")
+	}
 
 	if err = initDataRoot(); err != nil {
 		log.WithError(err).Error("failed to init data root")

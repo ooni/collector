@@ -1,11 +1,14 @@
 package apiv1
 
 import (
+	"net/http"
 	"strings"
 
 	apexLog "github.com/apex/log"
 	"github.com/gin-gonic/gin"
 	"github.com/ooni/collector/collector/handler"
+	"github.com/ooni/collector/collector/paths"
+	"github.com/spf13/viper"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 )
 
@@ -17,12 +20,15 @@ var log = apexLog.WithFields(apexLog.Fields{
 // BindAPI bind all the request handlers and middleware
 func BindAPI(router *gin.Engine) error {
 	p := ginprometheus.NewPrometheus("oonicollector", handler.CustomMetrics)
+	ignoredParams := []string{"reportID", "filename"}
 	p.ReqCntURLLabelMappingFn = func(c *gin.Context) string {
 		url := c.Request.URL.String()
-		for _, p := range c.Params {
-			if p.Key == "reportID" {
-				url = strings.Replace(url, p.Value, ":reportID", 1)
-				break
+		for _, param := range ignoredParams {
+			for _, p := range c.Params {
+				if p.Key == param {
+					url = strings.Replace(url, p.Value, ":"+param, 1)
+					break
+				}
 			}
 		}
 		return url
@@ -41,5 +47,10 @@ func BindAPI(router *gin.Engine) error {
 	v1.POST("/report/:reportID/close", handler.CloseReportHandler)
 	v1.POST("/measurement", handler.SubmitMeasurementHandler)
 
+	admin := router.Group("/admin", gin.BasicAuth(gin.Accounts{
+		"admin": viper.GetString("api.admin-password"),
+	}))
+	admin.DELETE("/report-file/:filename", handler.DeleteReportFileHandler)
+	admin.StaticFS("/report-files", http.Dir(paths.ReportDir()))
 	return nil
 }
