@@ -28,12 +28,12 @@ type CreateReportRequest struct {
 	Content         string `json:"content"`
 }
 
-var softwareVersionRegexp = regexp.MustCompile("^[0-9A-Za-z_.+-]+$")
+var softwareNameRegexp = regexp.MustCompile("^[0-9A-Za-z_\\.+-]+$")
 var testNameRegexp = regexp.MustCompile("^[a-zA-Z0-9_\\- ]+$")
 var probeASNRegexp = regexp.MustCompile("^AS[0-9]+$")
 
 func validateRequest(req *CreateReportRequest) error {
-	if softwareVersionRegexp.MatchString(req.SoftwareName) != true {
+	if softwareNameRegexp.MatchString(req.SoftwareName) != true {
 		return errors.New("Invalid software_name")
 	}
 	if testNameRegexp.MatchString(req.TestName) != true {
