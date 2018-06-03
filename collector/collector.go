@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ooni/collector/collector/api/v1"
+	"github.com/ooni/collector/collector/aws"
 	"github.com/ooni/collector/collector/middleware"
 	"github.com/ooni/collector/collector/paths"
 	"github.com/ooni/collector/collector/report"
@@ -39,6 +40,16 @@ func initDataRoot() error {
 	return nil
 }
 
+func initAWS() error {
+	accessKeyID := viper.GetString("aws.access-key-id")
+	secretAccessKey := viper.GetString("aws.secret-access-key")
+	if accessKeyID == "" {
+		return nil
+	}
+	aws.Session = aws.NewSession(accessKeyID, secretAccessKey)
+	return nil
+}
+
 // Start the collector server
 func Start() {
 	var (
@@ -56,6 +67,10 @@ func Start() {
 	if err = initDataRoot(); err != nil {
 		log.WithError(err).Error("failed to init data root")
 	}
+	if err = initAWS(); err != nil {
+		log.WithError(err).Error("failed to init aws")
+	}
+
 	store := storage.New(paths.BadgerDir())
 	storageMw, err := middleware.InitStorageMiddleware(store)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/apex/log"
+	"github.com/ooni/collector/collector/aws"
 	"github.com/ooni/collector/collector/info"
 	"github.com/ooni/collector/collector/paths"
 	"github.com/ooni/collector/collector/storage"
@@ -137,11 +138,22 @@ func CloseReport(store *storage.Storage, reportID string) error {
 		// There is no need to keep closed empty reports
 		os.Remove(meta.ReportFilePath)
 	}
+	meta.ReportFilePath = dstPath
 	meta.Closed = true
 	expiryTimers[reportID].Stop()
 
 	if err = store.SetReport(meta); err != nil {
 		return err
+	}
+	value, err := json.Marshal(meta)
+	if err != nil {
+		log.WithError(err).Error("failed to serialize meta")
+		return nil
+	}
+	_, err = aws.SendMessage(aws.Session, string(value), "report")
+	if err != nil {
+		log.WithError(err).Error("failed to publish to aws SQS")
+		return nil
 	}
 
 	return nil
