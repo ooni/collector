@@ -5,6 +5,6 @@ build:
 .PHONY: build
 
 release:
-	goreleaser --rm-dist
+	GITHUB_TOKEN=`cat .GITHUB_TOKEN` goreleaser --rm-dist
 
 .PHONY: release
