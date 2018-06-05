@@ -128,6 +128,11 @@ type SQSMessage struct {
 }
 
 func sendMessageToSQS(meta *storage.ReportMetadata) {
+	if aws.Session == nil {
+		log.Info("will not publish to the message queue")
+		return
+	}
+
 	message := SQSMessage{
 		ReportID:     meta.ReportID,
 		TestName:     meta.TestName,
