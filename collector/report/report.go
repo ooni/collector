@@ -128,11 +128,6 @@ type SQSMessage struct {
 }
 
 func sendMessageToSQS(meta *storage.ReportMetadata) {
-	if aws.Session == nil {
-		log.Info("will not publish to the message queue")
-		return
-	}
-
 	message := SQSMessage{
 		ReportID:     meta.ReportID,
 		TestName:     meta.TestName,
@@ -151,6 +146,26 @@ func sendMessageToSQS(meta *storage.ReportMetadata) {
 		log.WithError(err).Error("failed to publish to aws SQS")
 		return
 	}
+}
+
+func uploadToS3(meta *storage.ReportMetadata) {
+	filename := filepath.Base(meta.ReportFilePath)
+	bucket := viper.GetString("aws.s3-bucket")
+	prefix := fmt.Sprintf("%s/%s",
+		viper.GetString("aws.s3-prefix"),
+		time.Now().UTC().Format("2006-01-02"))
+	// We place files inside the directory $PREFIX/$YEAR-$MONTH-$DAY/
+	key := fmt.Sprintf("%s/%s", prefix, filename)
+	err := aws.UploadFile(aws.Session, meta.ReportFilePath, bucket, key)
+	if err != nil {
+		log.WithError(err).Errorf("failed to upload to s3://%s/%s", bucket, key)
+		return
+	}
+}
+
+func performAWSTasks(meta *storage.ReportMetadata) {
+	sendMessageToSQS(meta)
+	uploadToS3(meta)
 }
 
 // CloseReport marks the report as closed and moves it into the final reports folder
@@ -182,7 +197,9 @@ func CloseReport(store *storage.Storage, reportID string) error {
 	if err = store.SetReport(meta); err != nil {
 		return err
 	}
-	sendMessageToSQS(meta)
+	if aws.Session != nil {
+		go performAWSTasks(meta)
+	}
 	return nil
 }
 

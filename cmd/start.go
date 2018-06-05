@@ -27,4 +27,6 @@ func init() {
 	viper.SetDefault("api.fqn", "unknown")
 	viper.SetDefault("aws.access-key-id", "")
 	viper.SetDefault("aws.secret-access-key", "")
+	viper.SetDefault("aws.s3-bucket", "ooni-collector")
+	viper.SetDefault("aws.s3-prefix", "reports")
 }

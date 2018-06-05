@@ -13,3 +13,5 @@ fqn = "unknown"
 [aws]
 access-key-id = "XXX"
 secret-access-key = "XXX"
+s3-bucket = "ooni-collector"
+s3-prefix = "reports"
