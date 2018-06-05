@@ -1,3 +1,4 @@
 /vendor
 /dist
 /private
+.GITHUB_TOKEN
