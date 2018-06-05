@@ -100,6 +100,8 @@ func Start() {
 	opt := gracehttp.PreStartProcess(func() error {
 		return store.Close()
 	})
-	gracehttp.ServeWithOptions(servers, opt)
-
+	err = gracehttp.ServeWithOptions(servers, opt)
+	if err != nil {
+		log.WithError(err).Error("failed to start server")
+	}
 }
