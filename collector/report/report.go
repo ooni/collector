@@ -16,6 +16,7 @@ import (
 	"github.com/ooni/collector/collector/storage"
 	"github.com/ooni/collector/collector/util"
 	"github.com/rs/xid"
+	"github.com/spf13/viper"
 )
 
 // expiryTimers is a map of timers keyed to the ReportID. These are used to
@@ -116,6 +117,37 @@ func CreateNewReport(store *storage.Storage, testName string, probeASN string, s
 	return meta.ReportID, nil
 }
 
+// SQSMessage is the message sent to SQS
+type SQSMessage struct {
+	ReportID     string
+	ReportFile   string
+	TestName     string
+	CreationTime time.Time
+	EntryCount   int64
+	CollectorFQN string
+}
+
+func sendMessageToSQS(meta *storage.ReportMetadata) {
+	message := SQSMessage{
+		ReportID:     meta.ReportID,
+		TestName:     meta.TestName,
+		ReportFile:   filepath.Base(meta.ReportFilePath),
+		CreationTime: meta.CreationTime,
+		EntryCount:   meta.EntryCount,
+		CollectorFQN: viper.GetString("api.fqn"),
+	}
+	value, err := json.Marshal(message)
+	if err != nil {
+		log.WithError(err).Error("failed to serialize meta")
+		return
+	}
+	_, err = aws.SendMessage(aws.Session, string(value), "report")
+	if err != nil {
+		log.WithError(err).Error("failed to publish to aws SQS")
+		return
+	}
+}
+
 // CloseReport marks the report as closed and moves it into the final reports folder
 func CloseReport(store *storage.Storage, reportID string) error {
 	expiryTimers[reportID].Reset(expiryTimeDuration)
@@ -145,17 +177,7 @@ func CloseReport(store *storage.Storage, reportID string) error {
 	if err = store.SetReport(meta); err != nil {
 		return err
 	}
-	value, err := json.Marshal(meta)
-	if err != nil {
-		log.WithError(err).Error("failed to serialize meta")
-		return nil
-	}
-	_, err = aws.SendMessage(aws.Session, string(value), "report")
-	if err != nil {
-		log.WithError(err).Error("failed to publish to aws SQS")
-		return nil
-	}
-
+	sendMessageToSQS(meta)
 	return nil
 }
 

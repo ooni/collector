@@ -24,6 +24,7 @@ func init() {
 	viper.BindPFlag("api.port", startCmd.PersistentFlags().Lookup("port"))
 	viper.BindPFlag("api.address", startCmd.PersistentFlags().Lookup("address"))
 	viper.SetDefault("api.admin-password", "changeme")
+	viper.SetDefault("api.fqn", "unknown")
 	viper.SetDefault("aws.access-key-id", "")
 	viper.SetDefault("aws.secret-access-key", "")
 }
