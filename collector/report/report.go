@@ -1,18 +1,17 @@
 package report
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"time"
 
 	"github.com/apex/log"
+	"github.com/mongodb/mongo-go-driver/bson"
 	"github.com/ooni/collector/collector/aws"
 	"github.com/ooni/collector/collector/info"
-	"github.com/ooni/collector/collector/paths"
 	"github.com/ooni/collector/collector/storage"
 	"github.com/ooni/collector/collector/util"
 	"github.com/rs/xid"
@@ -28,52 +27,58 @@ var expiryTimeDuration = time.Duration(8) * time.Hour
 
 // BackendExtra is serverside extra metadata
 type BackendExtra struct {
-	SubmissionTime time.Time `json:"submission_time"`
-	MeasurementID  string    `json:"measurement_id"`
-	ReportID       string    `json:"report_id"`
+	SubmissionTime time.Time `json:"submission_time" bson:"submission_time"`
+	MeasurementID  string    `json:"measurement_id" bson:"measurement_id"`
+	ReportID       string    `json:"report_id" bson:"report_id"`
+}
+
+// Metadata is metadata about a report
+type Metadata struct {
+	ReportID        string    `json:"report_id" bson:"report_id"`
+	IsClosed        bool      `json:"is_closed" bson:"is_closed"`
+	CreationTime    time.Time `json:"creation_time" bson:"creation_time"`
+	LastUpdateTime  time.Time `json:"last_update_time" bson:"last_update_time"`
+	ProbeASN        string    `json:"probe_asn" bson:"probe_asn"`
+	ProbeCC         string    `json:"probe_cc" bson:"probe_cc"`
+	Platform        string    `json:"platform" bson:"platform"`
+	TestName        string    `json:"test_name" bson:"test_name"`
+	SoftwareName    string    `json:"software_name" bson:"software_name"`
+	SoftwareVersion string    `json:"software_version" bson:"software_version"`
+	EntryCount      int64     `json:"entry_count" bson:"entry_count"`
+}
+
+func NewMetadata() *Metadata {
+	return &Metadata{}
 }
 
 // MeasurementEntry is the structure of measurements submitted by an OONI Probe client
 type MeasurementEntry struct {
 	// These values are added by the pipeline
-	BucketDate     string `json:"bucket_date"`
-	ReportFilename string `json:"report_filename"`
+	BucketDate     string `json:"bucket_date" bson:"bucket_date"`
+	ReportFilename string `json:"report_filename" bson:"report_filename"`
 
-	ID                   string       `json:"id"`
-	ReportID             string       `json:"report_id"`
-	TestName             string       `json:"test_name"`
-	TestVersion          string       `json:"test_version"`
-	MeasurementStartTime string       `json:"measurement_start_time,omitempty"`
-	TestStartTime        string       `json:"test_start_time"` // XXX these should actually be time
-	Annotations          interface{}  `json:"annotations"`
-	BackendExtra         BackendExtra `json:"backend_extra"`
-	BackendVersion       string       `json:"backend_version"`
-	DataFormatVersion    string       `json:"data_format_version"`
-	Input                string       `json:"input"`
-	InputHashes          []string     `json:"input_hashes"`
-	Options              []string     `json:"options"`
-	ProbeASN             string       `json:"probe_asn"`
-	ProbeCC              string       `json:"probe_cc"`
-	ProbeCity            string       `json:"probe_city"`
-	ProbeIP              string       `json:"probe_ip"`
-	SoftwareName         string       `json:"software_name"`
-	SoftwareVersion      string       `json:"software_version"`
-	TestHelpers          interface{}  `json:"test_helpers"`
-	TestKeys             interface{}  `json:"test_keys"`
-	TestRuntime          float64      `json:"test_runtime"`
-}
-
-// closedReportPath is the final path of a report. The filename looks like this:
-// 20180601T172750Z-ndt-20180601T172754Z_AS14080_iR5R39aBde9hAcE6kMw7rOCAF0iR63IPSGtcMWYj0QDHHujaXu-AS14080-CO-probe-0.2.0.json
-func closedReportPath(meta *storage.ReportMetadata) string {
-	return filepath.Join(paths.ReportDir(), fmt.Sprintf(
-		"%s-%s-%s-%s-%s-probe-0.2.0.json",
-		meta.CreationTime.Format(TimestampFormat),
-		meta.TestName,
-		meta.ReportID,
-		meta.ProbeASN,
-		meta.ProbeCC,
-	))
+	ID                   string       `json:"id" bson:"id"`
+	ReportID             string       `json:"report_id" bson:"report_id"`
+	TestName             string       `json:"test_name" bson:"test_name"`
+	TestVersion          string       `json:"test_version" bson:"test_version"`
+	MeasurementStartTime string       `json:"measurement_start_time,omitempty" bson:"measurement_start_time"`
+	TestStartTime        string       `json:"test_start_time" bson:"test_start_time"` // XXX these should actually be time
+	Annotations          interface{}  `json:"annotations" bson:"annotations"`
+	BackendExtra         BackendExtra `json:"backend_extra" bson:"backend_extra"`
+	BackendVersion       string       `json:"backend_version" bson:"backend_version"`
+	DataFormatVersion    string       `json:"data_format_version" bson:"data_format_version"`
+	Input                string       `json:"input" bson:"input"`
+	InputHashes          []string     `json:"input_hashes" bson:"input_hashes"`
+	Options              []string     `json:"options" bson:"options"`
+	ProbeASN             string       `json:"probe_asn" bson:"probe_asn"`
+	ProbeCC              string       `json:"probe_cc" bson:"probe_cc"`
+	ProbeCity            string       `json:"probe_city" bson:"probe_city"`
+	ProbeIP              string       `json:"probe_ip" bson:"probe_ip"`
+	SoftwareName         string       `json:"software_name" bson:"software_name"`
+	SoftwareVersion      string       `json:"software_version" bson:"software_version"`
+	TestHelpers          interface{}  `json:"test_helpers" bson:"test_helpers"`
+	TestKeys             interface{}  `json:"test_keys" bson:"test_keys"`
+	TestRuntime          float64      `json:"test_runtime" bson:"test_runtime"`
 }
 
 // TimestampFormat is the string format for a timestamp, useful for generating
@@ -92,8 +97,7 @@ func GenReportID(asn string) string {
 // CreateNewReport creates a new report
 func CreateNewReport(store *storage.Storage, testName string, probeASN string, softwareName string, softwareVersion string) (string, error) {
 	reportID := GenReportID(probeASN)
-	tmpPath := filepath.Join(paths.TempReportDir(), reportID)
-	meta := storage.ReportMetadata{
+	meta := Metadata{
 		ReportID:        reportID,
 		TestName:        testName,
 		ProbeASN:        probeASN,
@@ -103,17 +107,16 @@ func CreateNewReport(store *storage.Storage, testName string, probeASN string, s
 		SoftwareVersion: softwareVersion,
 		CreationTime:    time.Now().UTC(),
 		LastUpdateTime:  time.Now().UTC(),
-		ReportFilePath:  tmpPath,
-		Closed:          false,
-		EntryCount:      0,
+		IsClosed:        false,
 	}
-	store.SetReport(&meta)
-	os.OpenFile(tmpPath, os.O_RDONLY|os.O_CREATE, 0700)
-
-	expiryTimers[reportID] = time.AfterFunc(expiryTimeDuration, func() {
-		CloseReport(store, reportID)
-	})
-
+	_, err := store.Client.
+		Database("collector").
+		Collection("reports").
+		InsertOne(context.Background(), meta)
+	if err != nil {
+		log.WithError(err).Error("failed to allocate a ReportID")
+		return "", err
+	}
 	return meta.ReportID, nil
 }
 
@@ -127,11 +130,10 @@ type SQSMessage struct {
 	CollectorFQN string
 }
 
-func sendMessageToSQS(meta *storage.ReportMetadata) {
+func sendMessageToSQS(meta *Metadata) {
 	message := SQSMessage{
 		ReportID:     meta.ReportID,
 		TestName:     meta.TestName,
-		ReportFile:   filepath.Base(meta.ReportFilePath),
 		CreationTime: meta.CreationTime,
 		EntryCount:   meta.EntryCount,
 		CollectorFQN: viper.GetString("api.fqn"),
@@ -148,58 +150,77 @@ func sendMessageToSQS(meta *storage.ReportMetadata) {
 	}
 }
 
-func uploadToS3(meta *storage.ReportMetadata) {
-	filename := filepath.Base(meta.ReportFilePath)
-	bucket := viper.GetString("aws.s3-bucket")
-	prefix := fmt.Sprintf("%s/%s",
-		viper.GetString("aws.s3-prefix"),
-		time.Now().UTC().Format("2006-01-02"))
-	// We place files inside the directory $PREFIX/$YEAR-$MONTH-$DAY/
-	key := fmt.Sprintf("%s/%s", prefix, filename)
-	err := aws.UploadFile(aws.Session, meta.ReportFilePath, bucket, key)
-	if err != nil {
-		log.WithError(err).Errorf("failed to upload to s3://%s/%s", bucket, key)
-		return
-	}
+func uploadToS3(meta *Metadata) {
+	/*
+		XXX
+			filename := filepath.Base(meta.ReportFilePath)
+			bucket := viper.GetString("aws.s3-bucket")
+			prefix := fmt.Sprintf("%s/%s",
+				viper.GetString("aws.s3-prefix"),
+				time.Now().UTC().Format("2006-01-02"))
+			// We place files inside the directory $PREFIX/$YEAR-$MONTH-$DAY/
+			key := fmt.Sprintf("%s/%s", prefix, filename)
+			err := aws.UploadFile(aws.Session, meta.ReportFilePath, bucket, key)
+			if err != nil {
+				log.WithError(err).Errorf("failed to upload to s3://%s/%s", bucket, key)
+				return
+			}
+	*/
 }
 
-func performAWSTasks(meta *storage.ReportMetadata) {
+func performAWSTasks(meta *Metadata) {
 	sendMessageToSQS(meta)
 	uploadToS3(meta)
 }
 
 // CloseReport marks the report as closed and moves it into the final reports folder
 func CloseReport(store *storage.Storage, reportID string) error {
-	expiryTimers[reportID].Reset(expiryTimeDuration)
+	var err error
 
-	meta, err := store.GetReport(reportID)
+	meta := NewMetadata()
+	reportFilter := bson.NewDocument(bson.EC.String("report_id", reportID))
+	err = store.Client.
+		Database("collector").
+		Collection("reports").
+		FindOne(context.Background(), reportFilter).
+		Decode(meta)
 	if err != nil {
+		log.WithError(err).Error("failed to find report_id")
 		return err
 	}
-	if meta.Closed == true {
+	if meta.IsClosed == true {
 		return ErrReportIsClosed
 	}
 
-	dstPath := closedReportPath(meta)
-	if meta.EntryCount > 0 {
-		err = os.Rename(meta.ReportFilePath, dstPath)
-		if err != nil {
-			return err
-		}
-	} else {
-		// There is no need to keep closed empty reports
-		os.Remove(meta.ReportFilePath)
-	}
-	meta.ReportFilePath = dstPath
-	meta.Closed = true
-	expiryTimers[reportID].Stop()
-
-	if err = store.SetReport(meta); err != nil {
+	_, err = store.Client.
+		Database("collector").
+		Collection("measurements").
+		UpdateMany(
+			context.Background(),
+			reportFilter,
+			bson.EC.SubDocumentFromElements("$set",
+				bson.EC.Boolean("is_closed", true),
+			),
+		)
+	if err != nil {
+		log.WithError(err).Error("failed to update measurements with is_closed=true")
 		return err
 	}
+
+	meta.IsClosed = true
+	_, err = store.Client.
+		Database("collector").
+		Collection("reports").
+		UpdateOne(nil, reportFilter, meta)
+	if err != nil {
+		log.WithError(err).Error("failed to update report with is_closed=true")
+		return err
+	}
+
 	if aws.Session != nil {
 		go performAWSTasks(meta)
 	}
+
 	return nil
 }
 
@@ -207,7 +228,11 @@ func genMeasurementID() string {
 	return xid.New().String()
 }
 
-func addBackendExtra(meta *storage.ReportMetadata, entry *MeasurementEntry) string {
+func validateMetadata(meta *Metadata, entry *MeasurementEntry) error {
+	return nil
+}
+
+func addBackendExtra(meta *Metadata, entry *MeasurementEntry) string {
 	measurementID := genMeasurementID()
 	entry.BackendVersion = info.Version
 	entry.BackendExtra.SubmissionTime = meta.LastUpdateTime
@@ -219,19 +244,26 @@ func addBackendExtra(meta *storage.ReportMetadata, entry *MeasurementEntry) stri
 var probeCCRegexp = regexp.MustCompile("^[A-Z]{2}$")
 
 // WriteEntry will write an entry to report
-func WriteEntry(store *storage.Storage, reportID string, entry *MeasurementEntry) (string, *storage.ReportMetadata, error) {
-	expiryTimers[reportID].Reset(expiryTimeDuration)
+func WriteEntry(store *storage.Storage, reportID string, entry *MeasurementEntry) (string, error) {
+	var err error
 
-	meta, err := store.GetReport(reportID)
+	meta := NewMetadata()
+	reportFilter := bson.NewDocument(bson.EC.String("report_id", reportID))
+	err = store.Client.
+		Database("collector").
+		Collection("reports").
+		FindOne(context.Background(), reportFilter).
+		Decode(meta)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
-	if meta.Closed == true {
-		return "", nil, ErrReportIsClosed
+
+	if meta.IsClosed == true {
+		return "", ErrReportIsClosed
 	}
 	if meta.ProbeCC == "" {
 		if probeCCRegexp.MatchString(entry.ProbeCC) != true {
-			return "", nil, errors.New("Invalid probe_cc")
+			return "", errors.New("Invalid probe_cc")
 		}
 		meta.ProbeCC = entry.ProbeCC
 	}
@@ -242,44 +274,33 @@ func WriteEntry(store *storage.Storage, reportID string, entry *MeasurementEntry
 			meta.Platform = platform
 		}
 	}
-	meta.LastUpdateTime = time.Now().UTC()
-	meta.EntryCount++
+
+	err = validateMetadata(meta, entry)
+	if err != nil {
+		log.WithError(err).Error("inconsistent metadata found")
+		return "", err
+	}
 	measurementID := addBackendExtra(meta, entry)
 
-	f, err := os.OpenFile(meta.ReportFilePath, os.O_APPEND|os.O_WRONLY, 0700)
+	_, err = store.Client.
+		Database("collector").
+		Collection("measurements").
+		InsertOne(context.Background(), entry)
 	if err != nil {
-		return "", nil, err
+		log.WithError(err).Error("failed to insert into measurements table")
+		return "", err
 	}
-	defer f.Close()
 
-	enc := json.NewEncoder(f)
-	err = enc.Encode(entry)
+	meta.LastUpdateTime = time.Now().UTC()
+	meta.EntryCount++
+
+	_, err = store.Client.
+		Database("collector").
+		Collection("reports").
+		UpdateOne(nil, reportFilter, meta)
 	if err != nil {
-		log.WithError(err).Error("Failed to encode measurement entry")
-		return "", nil, err
+		log.WithError(err).Error("failed to update reports table")
+		return "", err
 	}
-
-	if err = store.SetReport(meta); err != nil {
-		return "", nil, err
-	}
-
-	return measurementID, meta, nil
-}
-
-// ReloadExpiryTimers is used to reload the timers for reports to expire
-func ReloadExpiryTimers(store *storage.Storage) error {
-	reportList, err := store.ListReports()
-	if err != nil {
-		log.WithError(err).Error("failed to list reports")
-		return err
-	}
-
-	// We setup the timers so that pending reports will expire the
-	// ExpiryTimeDuration after the server has been rebooted
-	for _, meta := range reportList {
-		expiryTimers[meta.ReportID] = time.AfterFunc(expiryTimeDuration, func() {
-			CloseReport(store, meta.ReportID)
-		})
-	}
-	return nil
+	return measurementID, nil
 }

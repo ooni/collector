@@ -1,14 +1,11 @@
 package apiv1
 
 import (
-	"net/http"
 	"strings"
 
 	apexLog "github.com/apex/log"
 	"github.com/gin-gonic/gin"
 	"github.com/ooni/collector/collector/handler"
-	"github.com/ooni/collector/collector/paths"
-	"github.com/spf13/viper"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 )
 
@@ -46,11 +43,5 @@ func BindAPI(router *gin.Engine) error {
 	v1.POST("/report/:reportID", handler.UpdateReportHandler)
 	v1.POST("/report/:reportID/close", handler.CloseReportHandler)
 	v1.POST("/measurement", handler.SubmitMeasurementHandler)
-
-	admin := router.Group("/admin", gin.BasicAuth(gin.Accounts{
-		"admin": viper.GetString("api.admin-password"),
-	}))
-	admin.DELETE("/report-file/:filename", handler.DeleteReportFileHandler)
-	admin.StaticFS("/report-files", http.Dir(paths.ReportDir()))
 	return nil
 }

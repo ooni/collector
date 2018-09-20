@@ -1,7 +1,6 @@
 # This is an example config file for ooni-collector
 [core]
 log-level = "INFO"
-data-root = "/var/ooni-collector"
 is-dev = false
 
 [api]
@@ -9,6 +8,9 @@ port = 8080
 address = "127.0.0.1"
 admin-password = "changeme"
 fqn = "unknown"
+
+[db]
+url = "mongodb://foo:bar@localhost:27017"
 
 [aws]
 access-key-id = "XXX"

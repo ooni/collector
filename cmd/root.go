@@ -48,9 +48,7 @@ func init() {
 	RootCmd.PersistentFlags().Bool("dev", false, "run in development mode")
 	RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./ooni-collector.toml)")
 	RootCmd.PersistentFlags().StringP("log-level", "", "info", "Set the log level")
-	RootCmd.PersistentFlags().StringP("data-root", "", "/var/ooni-collector", "In which directory we should be writing working files to")
 	viper.BindPFlag("core.log-level", RootCmd.PersistentFlags().Lookup("log-level"))
-	viper.BindPFlag("core.data-root", RootCmd.PersistentFlags().Lookup("data-root"))
 	viper.BindPFlag("core.is-dev", RootCmd.PersistentFlags().Lookup("dev"))
 }
 

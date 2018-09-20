@@ -10,7 +10,6 @@ import (
 	"github.com/ooni/collector/collector/info"
 	"github.com/ooni/collector/collector/report"
 	"github.com/ooni/collector/collector/storage"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var log = apexLog.WithFields(apexLog.Fields{
@@ -105,7 +104,7 @@ func UpdateReportHandler(c *gin.Context) {
 	}
 	entry := req.Content
 
-	measurementID, meta, err := report.WriteEntry(store, reportID, &entry)
+	measurementID, err := report.WriteEntry(store, reportID, &entry)
 	if err != nil {
 		if err == storage.ErrReportNotFound {
 			log.WithError(err).Debug("report not found error")
@@ -118,8 +117,9 @@ func UpdateReportHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	platformMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.Platform).Inc()
-	countryMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.ProbeCC).Inc()
+	// XXX temporarily disabled
+	//platformMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.Platform).Inc()
+	//countryMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.ProbeCC).Inc()
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":         "success",
@@ -184,7 +184,7 @@ func SubmitMeasurementHandler(c *gin.Context) {
 		}
 		reportID = rid
 	}
-	measurementID, _, err := report.WriteEntry(store, reportID, &entry)
+	measurementID, err := report.WriteEntry(store, reportID, &entry)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),

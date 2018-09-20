@@ -21,10 +21,12 @@ func init() {
 
 	startCmd.PersistentFlags().IntP("port", "", 8080, "Which port we should bind to")
 	startCmd.PersistentFlags().StringP("address", "", "127.0.0.1", "Which interface we should listen on")
+
 	viper.BindPFlag("api.port", startCmd.PersistentFlags().Lookup("port"))
 	viper.BindPFlag("api.address", startCmd.PersistentFlags().Lookup("address"))
 	viper.SetDefault("api.admin-password", "changeme")
 	viper.SetDefault("api.fqn", "unknown")
+	viper.SetDefault("db.url", "")
 	viper.SetDefault("aws.access-key-id", "")
 	viper.SetDefault("aws.secret-access-key", "")
 	viper.SetDefault("aws.s3-bucket", "ooni-collector")
