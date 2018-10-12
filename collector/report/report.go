@@ -54,31 +54,31 @@ func NewMetadata() *Metadata {
 // MeasurementEntry is the structure of measurements submitted by an OONI Probe client
 type MeasurementEntry struct {
 	// These values are added by the pipeline
-	BucketDate     string `json:"bucket_date" bson:"bucket_date"`
-	ReportFilename string `json:"report_filename" bson:"report_filename"`
+	BucketDate     string `json:"bucket_date"`
+	ReportFilename string `json:"report_filename"`
 
-	ID                   string       `json:"id" bson:"id"`
-	ReportID             string       `json:"report_id" bson:"report_id"`
-	TestName             string       `json:"test_name" bson:"test_name"`
-	TestVersion          string       `json:"test_version" bson:"test_version"`
-	MeasurementStartTime string       `json:"measurement_start_time,omitempty" bson:"measurement_start_time"`
-	TestStartTime        string       `json:"test_start_time" bson:"test_start_time"` // XXX these should actually be time
-	Annotations          interface{}  `json:"annotations" bson:"annotations"`
-	BackendExtra         BackendExtra `json:"backend_extra" bson:"backend_extra"`
-	BackendVersion       string       `json:"backend_version" bson:"backend_version"`
-	DataFormatVersion    string       `json:"data_format_version" bson:"data_format_version"`
-	Input                string       `json:"input" bson:"input"`
-	InputHashes          []string     `json:"input_hashes" bson:"input_hashes"`
-	Options              []string     `json:"options" bson:"options"`
-	ProbeASN             string       `json:"probe_asn" bson:"probe_asn"`
-	ProbeCC              string       `json:"probe_cc" bson:"probe_cc"`
-	ProbeCity            string       `json:"probe_city" bson:"probe_city"`
-	ProbeIP              string       `json:"probe_ip" bson:"probe_ip"`
-	SoftwareName         string       `json:"software_name" bson:"software_name"`
-	SoftwareVersion      string       `json:"software_version" bson:"software_version"`
-	TestHelpers          interface{}  `json:"test_helpers" bson:"test_helpers"`
-	TestKeys             interface{}  `json:"test_keys" bson:"test_keys"`
-	TestRuntime          float64      `json:"test_runtime" bson:"test_runtime"`
+	ID                   string       `json:"id"`
+	ReportID             string       `json:"report_id"`
+	TestName             string       `json:"test_name"`
+	TestVersion          string       `json:"test_version"`
+	MeasurementStartTime string       `json:"measurement_start_time,omitempty"`
+	TestStartTime        string       `json:"test_start_time"` // XXX these should actually be time
+	Annotations          interface{}  `json:"annotations"`
+	BackendExtra         BackendExtra `json:"backend_extra"`
+	BackendVersion       string       `json:"backend_version"`
+	DataFormatVersion    string       `json:"data_format_version"`
+	Input                string       `json:"input"`
+	InputHashes          []string     `json:"input_hashes"`
+	Options              []string     `json:"options"`
+	ProbeASN             string       `json:"probe_asn"`
+	ProbeCC              string       `json:"probe_cc"`
+	ProbeCity            string       `json:"probe_city"`
+	ProbeIP              string       `json:"probe_ip"`
+	SoftwareName         string       `json:"software_name"`
+	SoftwareVersion      string       `json:"software_version"`
+	TestHelpers          interface{}  `json:"test_helpers"`
+	TestKeys             interface{}  `json:"test_keys"`
+	TestRuntime          float64      `json:"test_runtime"`
 }
 
 // TimestampFormat is the string format for a timestamp, useful for generating
@@ -261,6 +261,10 @@ func WriteEntry(store *storage.Storage, reportID string, entry *MeasurementEntry
 	if meta.IsClosed == true {
 		return "", ErrReportIsClosed
 	}
+
+	// If the ProbeCC or Platform are the empty string it means it's the first
+	// entry so we should parse this from the measurement entry and add it to the
+	// metadata.
 	if meta.ProbeCC == "" {
 		if probeCCRegexp.MatchString(entry.ProbeCC) != true {
 			return "", errors.New("Invalid probe_cc")
@@ -281,11 +285,23 @@ func WriteEntry(store *storage.Storage, reportID string, entry *MeasurementEntry
 		return "", err
 	}
 	measurementID := addBackendExtra(meta, entry)
+	entryBytes, err := json.Marshal(entry)
+	if err != nil {
+		log.WithError(err).Error("could not serialize entry")
+		return "", err
+	}
 
 	_, err = store.Client.
 		Database("collector").
-		Collection("measurements").
-		InsertOne(context.Background(), entry)
+		Collection("measurement_entries").
+		InsertOne(
+			context.Background(),
+			bson.NewDocument(
+				bson.EC.String("report_id", entry.ReportID),
+				bson.EC.String("measurement_id", measurementID),
+				bson.EC.Binary("json_bytes", entryBytes),
+			),
+		)
 	if err != nil {
 		log.WithError(err).Error("failed to insert into measurements table")
 		return "", err
@@ -297,7 +313,20 @@ func WriteEntry(store *storage.Storage, reportID string, entry *MeasurementEntry
 	_, err = store.Client.
 		Database("collector").
 		Collection("reports").
-		UpdateOne(nil, reportFilter, meta)
+		UpdateOne(
+			nil,
+			reportFilter,
+			bson.NewDocument(
+				bson.EC.SubDocumentFromElements("$set",
+					bson.EC.DateTime("last_update_time",
+						meta.LastUpdateTime.UnixNano()/int64(time.Millisecond)),
+					bson.EC.Int64("entry_count", meta.EntryCount),
+					// XXX this is a bit of a silly thing to do on every entry
+					bson.EC.String("probe_cc", meta.ProbeCC),
+					bson.EC.String("platform", meta.Platform),
+				),
+			),
+		)
 	if err != nil {
 		log.WithError(err).Error("failed to update reports table")
 		return "", err

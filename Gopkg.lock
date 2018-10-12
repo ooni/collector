@@ -2,12 +2,6 @@
 
 
 [[projects]]
-  branch = "master"
-  name = "github.com/AndreasBriese/bbloom"
-  packages = ["."]
-  revision = "28f7e881ca57bc00e028f9ede9f0d9104cfeef5e"
-
-[[projects]]
   name = "github.com/apex/log"
   packages = [
     ".",
@@ -58,31 +52,6 @@
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/buger/jsonparser"
-  packages = ["."]
-  revision = "6acdf747ae99cad92d1e8134606008acaca71844"
-
-[[projects]]
-  name = "github.com/dgraph-io/badger"
-  packages = [
-    ".",
-    "options",
-    "protos",
-    "skl",
-    "table",
-    "y"
-  ]
-  revision = "3ff1bfbb11c02c78c11269096669396c2d2cbbd3"
-  version = "v1.5.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/dgryski/go-farm"
-  packages = ["."]
-  revision = "2de33835d10275975374b37b2dcfd22c9020a1f5"
 
 [[projects]]
   branch = "master"
@@ -213,9 +182,10 @@
   name = "github.com/mongodb/mongo-go-driver"
   packages = [
     "bson",
-    "bson/builder",
+    "bson/bsoncodec",
     "bson/decimal",
     "bson/elements",
+    "bson/internal/llbson",
     "bson/objectid",
     "bson/parser",
     "bson/parser/ast",
@@ -243,6 +213,7 @@
     "internal",
     "mongo",
     "mongo/aggregateopt",
+    "mongo/bulkwriteopt",
     "mongo/changestreamopt",
     "mongo/clientopt",
     "mongo/collectionopt",
@@ -263,8 +234,8 @@
     "mongo/transactionopt",
     "mongo/updateopt"
   ]
-  revision = "b75c1ad5f277465dc7bdcc3d14c5177a89b6a4f9"
-  version = "v0.0.13"
+  revision = "518f2246cd0d376a473b93baaee3942d99e44d0f"
+  version = "v0.0.16"
 
 [[projects]]
   name = "github.com/pelletier/go-toml"
@@ -401,11 +372,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = [
-    "context",
-    "internal/timeseries",
-    "trace"
-  ]
+  packages = ["context"]
   revision = "1e491301e022f8f977054da4c2d852decd59571f"
 
 [[projects]]
@@ -451,6 +418,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fda79b1fe06dcc9ac5e1ac28f513c09f0b5901234a9866a6aa357c3968107296"
+  inputs-digest = "7e4a193b5c43805bf3063c7f13a7dcebd8d81797f6014e0b61cfccd1c29c830e"
   solver-name = "gps-cdcl"
   solver-version = 1

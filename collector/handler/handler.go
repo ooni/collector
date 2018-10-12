@@ -29,7 +29,7 @@ type CreateReportRequest struct {
 
 var softwareNameRegexp = regexp.MustCompile("^[0-9A-Za-z_\\.+-]+$")
 var testNameRegexp = regexp.MustCompile("^[a-zA-Z0-9_\\- ]+$")
-var probeASNRegexp = regexp.MustCompile("^AS[0-9]+$")
+var probeASNRegexp = regexp.MustCompile("^AS[0-9]{1,10}$")
 
 func validateRequest(req *CreateReportRequest) error {
 	if softwareNameRegexp.MatchString(req.SoftwareName) != true {
