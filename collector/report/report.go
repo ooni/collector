@@ -198,8 +198,10 @@ func CloseReport(store *storage.Storage, reportID string) error {
 		UpdateMany(
 			context.Background(),
 			reportFilter,
-			bson.EC.SubDocumentFromElements("$set",
-				bson.EC.Boolean("is_closed", true),
+			bson.NewDocument(
+				bson.EC.SubDocumentFromElements("$set",
+					bson.EC.Boolean("is_closed", true),
+				),
 			),
 		)
 	if err != nil {
@@ -211,7 +213,15 @@ func CloseReport(store *storage.Storage, reportID string) error {
 	_, err = store.Client.
 		Database("collector").
 		Collection("reports").
-		UpdateOne(nil, reportFilter, meta)
+		UpdateOne(
+			nil,
+			reportFilter,
+			bson.NewDocument(
+				bson.EC.SubDocumentFromElements("$set",
+					bson.EC.Boolean("is_closed", true),
+				),
+			),
+		)
 	if err != nil {
 		log.WithError(err).Error("failed to update report with is_closed=true")
 		return err

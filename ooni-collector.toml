@@ -10,10 +10,10 @@ admin-password = "changeme"
 fqn = "unknown"
 
 [db]
-url = "mongodb://foo:bar@localhost:27017"
+url = "mongodb://localhost:32769"
 
 [aws]
-access-key-id = "XXX"
-secret-access-key = "XXX"
+access-key-id = ""
+secret-access-key = ""
 s3-bucket = "ooni-collector"
 s3-prefix = "reports"
