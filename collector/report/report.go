@@ -192,23 +192,6 @@ func CloseReport(store *storage.Storage, reportID string) error {
 		return ErrReportIsClosed
 	}
 
-	_, err = store.Client.
-		Database("collector").
-		Collection("measurements").
-		UpdateMany(
-			context.Background(),
-			reportFilter,
-			bson.NewDocument(
-				bson.EC.SubDocumentFromElements("$set",
-					bson.EC.Boolean("is_closed", true),
-				),
-			),
-		)
-	if err != nil {
-		log.WithError(err).Error("failed to update measurements with is_closed=true")
-		return err
-	}
-
 	meta.IsClosed = true
 	_, err = store.Client.
 		Database("collector").
