@@ -1,8 +1,7 @@
-package storage
+package report
 
 import (
 	"context"
-	"errors"
 
 	"github.com/mongodb/mongo-go-driver/mongo"
 	"github.com/mongodb/mongo-go-driver/mongo/clientopt"
@@ -36,9 +35,6 @@ func (s *Storage) Init() error {
 	}
 	return nil
 }
-
-// ErrReportNotFound indicates no report with the given id could be found
-var ErrReportNotFound = errors.New("Report not found")
 
 // Close the database cleanly
 func (s *Storage) Close() error {

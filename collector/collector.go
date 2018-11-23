@@ -7,7 +7,7 @@ import (
 	"github.com/ooni/collector/collector/api/v1"
 	"github.com/ooni/collector/collector/aws"
 	"github.com/ooni/collector/collector/middleware"
-	"github.com/ooni/collector/collector/storage"
+	"github.com/ooni/collector/collector/report"
 
 	apexLog "github.com/apex/log"
 	"github.com/facebookgo/grace/gracehttp"
@@ -49,7 +49,7 @@ func Start() {
 	}
 
 	dbURL := viper.GetString("db.url")
-	store, err := storage.NewStorage(dbURL)
+	store, err := report.NewStorage(dbURL)
 	if err != nil {
 		log.WithError(err).Error("failed to create Storage")
 		return

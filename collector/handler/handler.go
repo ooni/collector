@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ooni/collector/collector/info"
 	"github.com/ooni/collector/collector/report"
-	"github.com/ooni/collector/collector/storage"
 )
 
 var log = apexLog.WithFields(apexLog.Fields{
@@ -46,7 +45,7 @@ func validateRequest(req *CreateReportRequest) error {
 
 // CreateReportHandler for report creation
 func CreateReportHandler(c *gin.Context) {
-	store := c.MustGet("Storage").(*storage.Storage)
+	store := c.MustGet("Storage").(*report.Storage)
 
 	var req CreateReportRequest
 
@@ -94,7 +93,7 @@ type UpdateReportRequest struct {
 func UpdateReportHandler(c *gin.Context) {
 	var err error
 
-	store := c.MustGet("Storage").(*storage.Storage)
+	store := c.MustGet("Storage").(*report.Storage)
 	reportID := c.Param("reportID")
 
 	var req UpdateReportRequest
@@ -106,7 +105,7 @@ func UpdateReportHandler(c *gin.Context) {
 
 	measurementID, err := report.WriteEntry(store, reportID, &entry)
 	if err != nil {
-		if err == storage.ErrReportNotFound {
+		if err == report.ErrReportNotFound {
 			log.WithError(err).Debug("report not found error")
 			// XXX use the correct return value
 			c.JSON(http.StatusNotFound, gin.H{
@@ -130,7 +129,7 @@ func UpdateReportHandler(c *gin.Context) {
 
 // CloseReportHandler moves the report to the report-dir
 func CloseReportHandler(c *gin.Context) {
-	store := c.MustGet("Storage").(*storage.Storage)
+	store := c.MustGet("Storage").(*report.Storage)
 	reportID := c.Param("reportID")
 
 	err := report.CloseReport(store, reportID)
@@ -150,7 +149,7 @@ func CloseReportHandler(c *gin.Context) {
 // SubmitMeasurementHandler is a handler for submitting a measurement in a
 // single request
 func SubmitMeasurementHandler(c *gin.Context) {
-	store := c.MustGet("Storage").(*storage.Storage)
+	store := c.MustGet("Storage").(*report.Storage)
 	var (
 		entry    report.MeasurementEntry
 		reportID string

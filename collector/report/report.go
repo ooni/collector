@@ -12,7 +12,6 @@ import (
 	"github.com/mongodb/mongo-go-driver/bson"
 	"github.com/ooni/collector/collector/aws"
 	"github.com/ooni/collector/collector/info"
-	"github.com/ooni/collector/collector/storage"
 	"github.com/ooni/collector/collector/util"
 	"github.com/rs/xid"
 	"github.com/spf13/viper"
@@ -95,7 +94,7 @@ func GenReportID(asn string) string {
 }
 
 // CreateNewReport creates a new report
-func CreateNewReport(store *storage.Storage, testName string, probeASN string, softwareName string, softwareVersion string) (string, error) {
+func CreateNewReport(store *Storage, testName string, probeASN string, softwareName string, softwareVersion string) (string, error) {
 	reportID := GenReportID(probeASN)
 	meta := Metadata{
 		ReportID:        reportID,
@@ -174,7 +173,7 @@ func performAWSTasks(meta *Metadata) {
 }
 
 // CloseReport marks the report as closed and moves it into the final reports folder
-func CloseReport(store *storage.Storage, reportID string) error {
+func CloseReport(store *Storage, reportID string) error {
 	var err error
 
 	meta := NewMetadata()
@@ -237,7 +236,7 @@ func addBackendExtra(meta *Metadata, entry *MeasurementEntry) string {
 var probeCCRegexp = regexp.MustCompile("^[A-Z]{2}$")
 
 // WriteEntry will write an entry to report
-func WriteEntry(store *storage.Storage, reportID string, entry *MeasurementEntry) (string, error) {
+func WriteEntry(store *Storage, reportID string, entry *MeasurementEntry) (string, error) {
 	var err error
 
 	meta := NewMetadata()
