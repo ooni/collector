@@ -1,4 +1,4 @@
-package report
+package collector
 
 import (
 	"context"
@@ -11,8 +11,6 @@ import (
 	"github.com/apex/log"
 	"github.com/mongodb/mongo-go-driver/bson"
 	"github.com/ooni/collector/collector/aws"
-	"github.com/ooni/collector/collector/info"
-	"github.com/ooni/collector/collector/util"
 	"github.com/rs/xid"
 	"github.com/spf13/viper"
 )
@@ -89,7 +87,7 @@ func GenReportID(asn string) string {
 	return fmt.Sprintf("%s_%s_%s",
 		time.Now().UTC().Format(TimestampFormat),
 		asn,
-		util.RandomStr(50),
+		RandomStr(50),
 	)
 }
 
@@ -226,7 +224,7 @@ func validateMetadata(meta *Metadata, entry *MeasurementEntry) error {
 
 func addBackendExtra(meta *Metadata, entry *MeasurementEntry) string {
 	measurementID := genMeasurementID()
-	entry.BackendVersion = info.Version
+	entry.BackendVersion = Version
 	entry.BackendExtra.SubmissionTime = meta.LastUpdateTime
 	entry.BackendExtra.ReportID = meta.ReportID
 	entry.BackendExtra.MeasurementID = measurementID

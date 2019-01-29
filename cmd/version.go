@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/ooni/collector/collector/info"
+	"github.com/ooni/collector/collector"
 	"github.com/spf13/cobra"
 )
 
@@ -13,7 +13,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of OONI Collector",
 	Long:  `All software has versions. This is OONI Collector'.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println(info.FullVersionString())
+		fmt.Println(collector.FullVersionString())
 		return nil
 	},
 }
