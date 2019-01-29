@@ -4,32 +4,16 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/apex/log"
+	"github.com/ooni/collector/collector"
 	"github.com/ooni/collector/collector/api/v1"
-	"github.com/ooni/collector/collector/aws"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	apexLog "github.com/apex/log"
 	"github.com/facebookgo/grace/gracehttp"
 	"github.com/gin-gonic/gin"
-	"github.com/spf13/viper"
 )
-
-var log = apexLog.WithFields(apexLog.Fields{
-	"pkg": "collector",
-	"cmd": "ooni-collector",
-})
-
-func initAWS() error {
-	accessKeyID := viper.GetString("aws.access-key-id")
-	secretAccessKey := viper.GetString("aws.secret-access-key")
-	if accessKeyID == "" {
-		return nil
-	}
-	aws.Session = aws.NewSession(accessKeyID, secretAccessKey)
-	return nil
-}
 
 // Start the collector server
 func Start() {
@@ -40,23 +24,14 @@ func Start() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	adminPassword := viper.GetString("api.admin-password")
-	if adminPassword == "changeme" {
-		log.Warn("api.admin-password is set to the default value")
-	}
-
-	if err = initAWS(); err != nil {
-		log.WithError(err).Error("failed to init aws")
-	}
-
-	dbURL := viper.GetString("db.url")
-	store, err := NewStorage(dbURL)
+	reportDir := viper.GetString("core.report-dir")
+	store, err := collector.NewStorage(reportDir)
 	if err != nil {
-		log.WithError(err).Error("failed to create Storage")
+		log.WithError(err).Error("failed to init storage")
 		return
 	}
 
-	storageMw, err := InitStorageMiddleware(store)
+	storageMw, err := collector.InitStorageMiddleware(store)
 	if err != nil {
 		log.WithError(err).Error("failed to init storage middleware")
 		return
@@ -107,11 +82,5 @@ func init() {
 
 	viper.BindPFlag("api.port", startCmd.PersistentFlags().Lookup("port"))
 	viper.BindPFlag("api.address", startCmd.PersistentFlags().Lookup("address"))
-	viper.SetDefault("api.admin-password", "changeme")
 	viper.SetDefault("api.fqn", "unknown")
-	viper.SetDefault("db.url", "")
-	viper.SetDefault("aws.access-key-id", "")
-	viper.SetDefault("aws.secret-access-key", "")
-	viper.SetDefault("aws.s3-bucket", "ooni-collector")
-	viper.SetDefault("aws.s3-prefix", "reports")
 }

@@ -5,16 +5,11 @@ import (
 	"os"
 	"strings"
 
-	apexLog "github.com/apex/log"
+	"github.com/apex/log"
 	"github.com/apex/log/handlers/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
-
-var log = apexLog.WithFields(apexLog.Fields{
-	"pkg": "cmd",
-	"cmd": "ooni-registry",
-})
 
 var cfgFile string
 
@@ -72,10 +67,10 @@ func initConfig() {
 		log.WithError(err).Errorf("using default configuration")
 	}
 
-	apexLog.SetHandler(cli.Default)
-	level, err := apexLog.ParseLevel(viper.GetString("core.log-level"))
+	log.SetHandler(cli.Default)
+	level, err := log.ParseLevel(viper.GetString("core.log-level"))
 	if err != nil {
 		fmt.Println("Invalid log level. Must be one of debug, info, warn, error, fatal")
 	}
-	apexLog.SetLevel(level)
+	log.SetLevel(level)
 }
