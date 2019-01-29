@@ -137,13 +137,7 @@ func CloseReport(store *Storage, reportID string) error {
 		return ErrReportNotFound
 	}
 
-	reportFilename, err := activeReport.GenReportFilename()
-	if err != nil {
-		log.WithError(err).Error("failed to generate filename")
-		return err
-	}
-
-	err = store.CloseReportFile(reportID, reportFilename)
+	err := store.CloseReportFile(activeReport)
 	if err != nil {
 		log.WithError(err).Error("failed to close report")
 		return err

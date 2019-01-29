@@ -28,7 +28,6 @@ type Storage struct {
 
 // Init checks that the store is usable
 func (s *Storage) Init() error {
-	log.Info("Initing storage")
 	for _, path := range []string{s.syncDir, s.incomingDir} {
 		stat, err := os.Stat(path)
 		if os.IsNotExist(err) {
@@ -72,9 +71,8 @@ func (s *Storage) WriteToReportFile(reportID string, data []byte) error {
 }
 
 // CloseReportFile wll move the report file from incoming into the sync directory
-func (s *Storage) CloseReportFile(reportID string, reportFilename string) error {
-	srcPath := filepath.Join(s.incomingDir, reportID)
-	dstPath := filepath.Join(s.syncDir, reportFilename)
+func (s *Storage) CloseReportFile(activeReport *ActiveReport) error {
+	srcPath := filepath.Join(s.incomingDir, activeReport.ReportID)
 	fi, err := os.Stat(srcPath)
 	if err != nil {
 		return err
@@ -83,6 +81,13 @@ func (s *Storage) CloseReportFile(reportID string, reportFilename string) error 
 	if fi.Size() == 0 {
 		return os.Remove(srcPath)
 	}
+
+	reportFilename, err := activeReport.GenReportFilename()
+	if err != nil {
+		log.WithError(err).Error("failed to generate filename")
+		return err
+	}
+	dstPath := filepath.Join(s.syncDir, reportFilename)
 	return os.Rename(srcPath, dstPath)
 }
 
