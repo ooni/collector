@@ -11,16 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/apex/log"
+	"github.com/gin-gonic/gin"
 )
-
-func syncDirPath(reportDir string) string {
-	return filepath.Join(reportDir, "sync")
-}
-
-func incomingDirPath(reportDir string) string {
-	return filepath.Join(reportDir, "incoming")
-}
 
 func mapFromJSON(data []byte) map[string]interface{} {
 	var result interface{}
@@ -84,94 +76,106 @@ func closeReport(r http.Handler, reportID string) (*httptest.ResponseRecorder, e
 	return w, nil
 }
 
-// This test checks to see that if a report is opened and then closed right
-// after it doesn't move into the sync directory an empty report file.
-func TestReportCreateAndClose(t *testing.T) {
-	reportDir, err := ioutil.TempDir("", "ooni-reports")
+func checkDirItemCount(t *testing.T, dirPath string, expected int) {
+	files, err := ioutil.ReadDir(dirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(reportDir)
+	if len(files) != expected {
+		t.Errorf("the dir %s does not have %d files as expected (%d instead)", dirPath, len(files), expected)
+	}
+}
 
-	router := SetupRouter(reportDir)
-	w, err := createReport(router)
+func checkReportIncoming(t *testing.T, ct *CollectorTest, reportID string) {
+	path := filepath.Join(ct.IncomingDir(), fmt.Sprintf("%s.json", reportID))
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Error("report_id file was not created")
+	}
+}
+
+type CollectorTest struct {
+	ReportDir string
+	Router    *gin.Engine
+}
+
+func (c *CollectorTest) SyncDir() string {
+	return filepath.Join(c.ReportDir, "sync")
+}
+
+func (c *CollectorTest) IncomingDir() string {
+	return filepath.Join(c.ReportDir, "incoming")
+}
+
+func NewCollectorTest() (*CollectorTest, error) {
+	ct := CollectorTest{}
+
+	reportDir, err := ioutil.TempDir("", "ooni-reports")
+	if err != nil {
+		return nil, err
+	}
+	ct.ReportDir = reportDir
+	ct.Router = SetupRouter(ct.ReportDir)
+	return &ct, err
+}
+
+// This test checks to see that if a report is opened and then closed right
+// after it doesn't move into the sync directory an empty report file.
+func TestReportCreateAndClose(t *testing.T) {
+	ct, err := NewCollectorTest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(ct.ReportDir)
+
+	w, err := createReport(ct.Router)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp := mapFromJSON(w.Body.Bytes())
 	reportID := resp["report_id"].(string)
 
-	if _, err := os.Stat(filepath.Join(incomingDirPath(reportDir), fmt.Sprintf("%s.json", reportID))); os.IsNotExist(err) {
-		t.Error("report_id file was not created")
-	}
+	checkReportIncoming(t, ct, reportID)
 
-	w, err = closeReport(router, reportID)
+	w, err = closeReport(ct.Router, reportID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	files, err := ioutil.ReadDir(incomingDirPath(reportDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) != 0 {
-		t.Error("the incoming dir is not empty")
-	}
-	files, err = ioutil.ReadDir(syncDirPath(reportDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) != 0 {
-		log.Error("the sync dir is not empty. Empty files should not be moved into the sync dir")
-	}
+	checkDirItemCount(t, ct.IncomingDir(), 0)
+	checkDirItemCount(t, ct.SyncDir(), 0)
 }
 
 // This test checks to see that the report lifecycle works fully
 func TestReportLifeCycle(t *testing.T) {
-	reportDir, err := ioutil.TempDir("", "ooni-reports")
+	ct, err := NewCollectorTest()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(reportDir)
+	defer os.RemoveAll(ct.ReportDir)
 
-	router := SetupRouter(reportDir)
-	w, err := createReport(router)
+	w, err := createReport(ct.Router)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp := mapFromJSON(w.Body.Bytes())
 	reportID := resp["report_id"].(string)
 
-	if _, err := os.Stat(filepath.Join(incomingDirPath(reportDir), fmt.Sprintf("%s.json", reportID))); os.IsNotExist(err) {
-		t.Error("report_id file was not created")
-	}
+	checkReportIncoming(t, ct, reportID)
 
 	wcSample, _ := ioutil.ReadFile("testdata/web_connectivity-sample.json")
 	var content interface{}
 	json.Unmarshal(wcSample, &content)
 
-	w, err = updateReport(router, reportID, content)
+	w, err = updateReport(ct.Router, reportID, content)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	w, err = closeReport(router, reportID)
+	w, err = closeReport(ct.Router, reportID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	files, err := ioutil.ReadDir(incomingDirPath(reportDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) != 0 {
-		t.Error("the incoming dir is not empty")
-	}
-	files, err = ioutil.ReadDir(syncDirPath(reportDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) != 1 {
-		t.Error("the sync dir is empty!")
-	}
+	checkDirItemCount(t, ct.IncomingDir(), 0)
+	checkDirItemCount(t, ct.SyncDir(), 1)
 }
