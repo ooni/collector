@@ -42,8 +42,8 @@ func (s *Storage) Init() error {
 }
 
 // CreateReportFile creates a file to store a set of measurements
-func (s *Storage) CreateReportFile(reportID string) error {
-	path := filepath.Join(s.incomingDir, reportID)
+func (s *Storage) CreateReportFile(activeReport *ActiveReport) error {
+	path := filepath.Join(s.incomingDir, activeReport.IncomingFilename())
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0770)
 	if err != nil {
 		return err
@@ -51,12 +51,13 @@ func (s *Storage) CreateReportFile(reportID string) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
+	activeReport.Path = path
 	return nil
 }
 
 // WriteToReportFile will append to an active report file
-func (s *Storage) WriteToReportFile(reportID string, data []byte) error {
-	path := filepath.Join(s.incomingDir, reportID)
+func (s *Storage) WriteToReportFile(activeReport *ActiveReport, data []byte) error {
+	path := filepath.Join(s.incomingDir, activeReport.IncomingFilename())
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0750)
 	if err != nil {
 		return err
@@ -72,7 +73,7 @@ func (s *Storage) WriteToReportFile(reportID string, data []byte) error {
 
 // CloseReportFile wll move the report file from incoming into the sync directory
 func (s *Storage) CloseReportFile(activeReport *ActiveReport) error {
-	srcPath := filepath.Join(s.incomingDir, activeReport.ReportID)
+	srcPath := filepath.Join(s.incomingDir, activeReport.IncomingFilename())
 	fi, err := os.Stat(srcPath)
 	if err != nil {
 		return err
@@ -82,7 +83,7 @@ func (s *Storage) CloseReportFile(activeReport *ActiveReport) error {
 		return os.Remove(srcPath)
 	}
 
-	reportFilename, err := activeReport.GenReportFilename()
+	reportFilename, err := activeReport.SyncFilename()
 	if err != nil {
 		log.WithError(err).Error("failed to generate filename")
 		return err

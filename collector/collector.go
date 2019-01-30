@@ -23,6 +23,10 @@ func SetupRouter(reportDir string) *gin.Engine {
 		log.WithError(err).Error("failed to init storage middleware")
 		return nil
 	}
+	if err = ReloadActiveReports(store); err != nil {
+		log.WithError(err).Error("failed to reload active reports")
+		return nil
+	}
 
 	router := gin.Default()
 	router.Use(storageMw.MiddlewareFunc())

@@ -28,23 +28,6 @@ func mapFromJSON(data []byte) map[string]interface{} {
 	return result.(map[string]interface{})
 }
 
-type CreateReportReq struct {
-	SoftwareName      string `json:"software_name"`
-	SoftwareVersion   string `json:"software_version"`
-	ProbeASN          string `json:"probe_asn"`
-	ProbeCC           string `json:"probe_cc"`
-	TestName          string `json:"test_name"`
-	TestVersion       string `json:"test_version"`
-	DataFormatVersion string `json:"data_format_version"`
-	Format            string `json:"format"`
-	// The below fields are optional
-	TestStartTime string   `json:"test_start_time,omitempty"`
-	InputHashes   []string `json:"input_hashes,omitempty"`
-	TestHelper    string   `json:"test_helper,omitempty"`
-	Content       string   `json:"content,omitempty"`
-	ProbeIP       string   `json:"probe_ip,omitempty"`
-}
-
 func createReport(r http.Handler) (*httptest.ResponseRecorder, error) {
 	createReq := CreateReportReq{
 		SoftwareName:      "collector-tester",
@@ -118,7 +101,7 @@ func TestReportCreateAndClose(t *testing.T) {
 	resp := mapFromJSON(w.Body.Bytes())
 	reportID := resp["report_id"].(string)
 
-	if _, err := os.Stat(filepath.Join(incomingDirPath(reportDir), reportID)); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(incomingDirPath(reportDir), fmt.Sprintf("%s.json", reportID))); os.IsNotExist(err) {
 		t.Error("report_id file was not created")
 	}
 
@@ -159,7 +142,7 @@ func TestReportLifeCycle(t *testing.T) {
 	resp := mapFromJSON(w.Body.Bytes())
 	reportID := resp["report_id"].(string)
 
-	if _, err := os.Stat(filepath.Join(incomingDirPath(reportDir), reportID)); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(incomingDirPath(reportDir), fmt.Sprintf("%s.json", reportID))); os.IsNotExist(err) {
 		t.Error("report_id file was not created")
 	}
 
