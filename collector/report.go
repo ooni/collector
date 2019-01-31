@@ -16,8 +16,6 @@ import (
 	"github.com/rs/xid"
 )
 
-var activeReports = make(map[string]*ActiveReport)
-
 // GetExpiryTimeDuration is after how much time a report expires
 var GetExpiryTimeDuration = func() time.Duration {
 	return time.Duration(8) * time.Hour
@@ -86,6 +84,7 @@ func (a *ActiveReport) SetFromEntry(e *MeasurementEntry) error {
 	return nil
 }
 
+// Validate checks that we have a valid report submitted
 func (a *ActiveReport) Validate() error {
 	if testNameRegexp.MatchString(a.TestName) != true {
 		return errors.New("invalid \"test_name\" field")
@@ -96,14 +95,15 @@ func (a *ActiveReport) Validate() error {
 	if probeCCRegexp.MatchString(a.ProbeCC) != true {
 		return errors.New("invalid \"probe_cc\" field")
 	}
-	if a.Format != "json" && a.Format != "yaml" {
-		return errors.New("invalid \"format\" field")
+	if stringInSlice(a.Format, supportedFormats) != true {
+		return fmt.Errorf("invalid \"format\" field, %s", a.Format)
 	}
 	return nil
 }
 
+// IncomingFilename determines the filename of an incoming report
 func (a *ActiveReport) IncomingFilename() string {
-	if a.Format != "json" && a.Format != "yaml" {
+	if stringInSlice(a.Format, supportedFormats) != true {
 		// Defensive coding
 		panic("an unexpected value for format was found. Bailing...")
 	}
@@ -177,21 +177,22 @@ func CreateNewReport(store *Storage, format string) (string, error) {
 	activeReport.expiryTimer = time.AfterFunc(GetExpiryTimeDuration(), func() {
 		CloseReport(store, activeReport.ReportID)
 	})
-	activeReports[activeReport.ReportID] = activeReport
+	store.activeReports[activeReport.ReportID] = activeReport
 	return activeReport.ReportID, nil
 }
 
 // CloseReport marks the report as closed and moves it into the final reports folder
 func CloseReport(store *Storage, reportID string) error {
-	activeReport, ok := activeReports[reportID]
+	activeReport, ok := store.activeReports[reportID]
 	if !ok {
 		return ErrReportNotFound
 	}
 	activeReport.mutex.Lock()
 	activeReport.expiryTimer.Stop()
+	defer activeReport.mutex.Unlock()
 
 	// We check this again to avoid a race
-	if _, ok := activeReports[reportID]; !ok {
+	if _, ok := store.activeReports[reportID]; !ok {
 		return ErrReportNotFound
 	}
 
@@ -201,8 +202,7 @@ func CloseReport(store *Storage, reportID string) error {
 		return err
 	}
 
-	delete(activeReports, reportID)
-	activeReport.mutex.Unlock()
+	delete(store.activeReports, reportID)
 
 	return nil
 }
@@ -223,15 +223,16 @@ func addBackendExtra(meta *ActiveReport, entry *MeasurementEntry) string {
 // WriteEntry will write an entry to report
 func WriteEntry(store *Storage, reportID string, entry *MeasurementEntry) (string, error) {
 	var err error
-	activeReport, ok := activeReports[reportID]
+	activeReport, ok := store.activeReports[reportID]
 	if !ok {
 		return "", ErrReportNotFound
 	}
 	activeReport.mutex.Lock()
 	activeReport.expiryTimer.Reset(GetExpiryTimeDuration())
+	defer activeReport.mutex.Unlock()
 
 	// We check this again to avoid a race
-	if _, ok := activeReports[reportID]; !ok {
+	if _, ok := store.activeReports[reportID]; !ok {
 		return "", ErrReportNotFound
 	}
 
@@ -249,14 +250,12 @@ func WriteEntry(store *Storage, reportID string, entry *MeasurementEntry) (strin
 		log.WithError(err).Error("could not serialize entry")
 		return "", err
 	}
-
+	entryBytes = append(entryBytes, []byte("\n")...)
 	store.WriteToReportFile(activeReport, entryBytes)
 	if err != nil {
 		log.WithError(err).Error("failed to insert into measurements table")
 		return "", err
 	}
-
-	activeReport.mutex.Unlock()
 
 	return measurementID, nil
 }
@@ -277,7 +276,7 @@ func LoadActiveReportFromFile(path string) (*ActiveReport, error) {
 
 	file, err := os.Open(path)
 	if err != nil {
-		log.WithError(err).Error("failed to open active report from file.")
+		log.WithError(err).Errorf("failed to open active report from file: %s", path)
 		return nil, err
 	}
 	defer file.Close()
@@ -312,13 +311,13 @@ func LoadActiveReportFromFile(path string) (*ActiveReport, error) {
 // reports need to be reloading. This makes it possible to restart the server
 // without loosing track of active reports.
 func ReloadActiveReports(store *Storage) error {
-	files, err := ioutil.ReadDir(store.incomingDir)
+	files, err := ioutil.ReadDir(store.IncomingDir())
 	if err != nil {
 		log.WithError(err).Error("failed to list incoming dir")
 		return err
 	}
 	for _, file := range files {
-		ar, err := LoadActiveReportFromFile(filepath.Join(store.incomingDir, file.Name()))
+		ar, err := LoadActiveReportFromFile(filepath.Join(store.IncomingDir(), file.Name()))
 		if err != nil {
 			log.WithError(err).Errorf("failed to load file: %s", file.Name())
 			return err
@@ -326,7 +325,7 @@ func ReloadActiveReports(store *Storage) error {
 		ar.expiryTimer = time.AfterFunc(GetExpiryTimeDuration(), func() {
 			CloseReport(store, ar.ReportID)
 		})
-		activeReports[ar.ReportID] = ar
+		store.activeReports[ar.ReportID] = ar
 	}
 	return nil
 }

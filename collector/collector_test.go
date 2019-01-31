@@ -45,7 +45,11 @@ func createReport(r http.Handler) (*httptest.ResponseRecorder, error) {
 		DataFormatVersion: "0.2.0",
 		Format:            "json",
 	}
-	return performRequestJSON(r, "POST", "/report", createReq)
+	w, err := performRequestJSON(r, "POST", "/report", createReq)
+	if w.Code != 200 {
+		return nil, fmt.Errorf("Got unexpected status code: %d", w.Code)
+	}
+	return w, err
 }
 
 type UpdateReportReq struct {
@@ -71,7 +75,7 @@ func checkDirItemCount(t *testing.T, dirPath string, expected int) {
 		t.Fatal(err)
 	}
 	if len(files) != expected {
-		t.Errorf("the dir %s does not have %d files as expected (%d instead)", dirPath, len(files), expected)
+		t.Errorf("the dir %s does not have %d files as expected (%d instead)", dirPath, expected, len(files))
 	}
 }
 
@@ -96,6 +100,10 @@ func (c *CollectorTest) IncomingDir() string {
 }
 
 func NewCollectorTest() (*CollectorTest, error) {
+	GetExpiryTimeDuration = func() time.Duration {
+		return 8 * time.Hour
+	}
+
 	ct := CollectorTest{}
 
 	reportDir, err := ioutil.TempDir("", "ooni-reports")
@@ -177,7 +185,7 @@ func TestInvalidFormat(t *testing.T) {
 	defer os.RemoveAll(ct.ReportDir)
 
 	createReq := CreateReportReq{
-		Format: "yaml",
+		Format: "invalid-format",
 	}
 	w, err := performRequestJSON(ct.Router, "POST", "/report", createReq)
 	if err != nil {
@@ -211,4 +219,106 @@ func TestReportsWillExpire(t *testing.T) {
 
 	checkDirItemCount(t, ct.IncomingDir(), 0)
 	checkDirItemCount(t, ct.SyncDir(), 0)
+}
+
+func TestRestartCollector(t *testing.T) {
+	ct, err := NewCollectorTest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(ct.ReportDir)
+
+	w, err := createReport(ct.Router)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := mapFromJSON(w.Body.Bytes())
+	reportID := resp["report_id"].(string)
+
+	checkReportIncoming(t, ct, reportID)
+
+	wcSample, _ := ioutil.ReadFile("testdata/web_connectivity-sample.json")
+	var content interface{}
+	json.Unmarshal(wcSample, &content)
+
+	w, err = updateReport(ct.Router, reportID, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checkDirItemCount(t, ct.IncomingDir(), 1)
+
+	// By re-doing the setup of the collector we are effectively restarting it.
+	ct.Router = nil
+	ct.Router = SetupRouter(ct.ReportDir)
+
+	w, err = closeReport(ct.Router, reportID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checkDirItemCount(t, ct.IncomingDir(), 0)
+	checkDirItemCount(t, ct.SyncDir(), 1)
+}
+
+func NewDummyMeasurementEntry() MeasurementEntry {
+	return MeasurementEntry{
+		ReportID:             "",
+		TestName:             "web_connectivity",
+		TestVersion:          "0.0.1",
+		MeasurementStartTime: "2019-01-29 00:05:06",
+		TestStartTime:        "2019-01-29 00:05:06",
+		Annotations: map[string]string{
+			"platform": "android",
+		},
+		DataFormatVersion: "0.2.0",
+		Input:             "http://google.com",
+		ProbeASN:          "AS123",
+		ProbeCC:           "IT",
+		ProbeCity:         "",
+		ProbeIP:           "",
+		SoftwareName:      "ooniprobe",
+		SoftwareVersion:   "1.0.0",
+		TestKeys:          map[string]interface{}{"foo": "bar"},
+		TestRuntime:       3.14,
+	}
+}
+
+// This test checks to see that the report lifecycle works fully
+func TestInvalidEntryFields(t *testing.T) {
+	ct, err := NewCollectorTest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(ct.ReportDir)
+
+	w, err := createReport(ct.Router)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := mapFromJSON(w.Body.Bytes())
+	reportID := resp["report_id"].(string)
+
+	checkReportIncoming(t, ct, reportID)
+
+	entry := NewDummyMeasurementEntry()
+	entry.TestName = "i/.../am/h4x0r"
+	w, _ = updateReport(ct.Router, reportID, entry)
+	if w.Code != 400 {
+		t.Error("I was expecting an error")
+	}
+
+	entry = NewDummyMeasurementEntry()
+	entry.ProbeCC = "Italia!"
+	w, _ = updateReport(ct.Router, reportID, entry)
+	if w.Code != 400 {
+		t.Error("I was expecting an error")
+	}
+
+	entry = NewDummyMeasurementEntry()
+	entry.ProbeASN = "MaremmaASN"
+	w, _ = updateReport(ct.Router, reportID, entry)
+	if w.Code != 400 {
+		t.Error("I was expecting an error")
+	}
 }

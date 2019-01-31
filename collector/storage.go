@@ -13,22 +13,30 @@ import (
 // NewStorage creates a new storage backend
 func NewStorage(reportDir string) (*Storage, error) {
 	return &Storage{
-		reportDir:   reportDir,
-		syncDir:     filepath.Join(reportDir, "sync"),
-		incomingDir: filepath.Join(reportDir, "incoming"),
+		reportDir:     reportDir,
+		activeReports: make(map[string]*ActiveReport),
 	}, nil
 }
 
 // Storage interface implementation
 type Storage struct {
-	reportDir   string
-	incomingDir string
-	syncDir     string
+	reportDir     string
+	activeReports map[string]*ActiveReport
+}
+
+// IncomingDir is where report files are stored while they are active
+func (s *Storage) IncomingDir() string {
+	return filepath.Join(s.reportDir, "incoming")
+}
+
+// SyncDir is where reports are stored when they are ready to be synched (or closed)
+func (s *Storage) SyncDir() string {
+	return filepath.Join(s.reportDir, "sync")
 }
 
 // Init checks that the store is usable
 func (s *Storage) Init() error {
-	for _, path := range []string{s.syncDir, s.incomingDir} {
+	for _, path := range []string{s.SyncDir(), s.IncomingDir()} {
 		stat, err := os.Stat(path)
 		if os.IsNotExist(err) {
 			if err := os.Mkdir(path, 0770); err != nil {
@@ -43,7 +51,7 @@ func (s *Storage) Init() error {
 
 // CreateReportFile creates a file to store a set of measurements
 func (s *Storage) CreateReportFile(activeReport *ActiveReport) error {
-	path := filepath.Join(s.incomingDir, activeReport.IncomingFilename())
+	path := filepath.Join(s.IncomingDir(), activeReport.IncomingFilename())
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0770)
 	if err != nil {
 		return err
@@ -57,7 +65,7 @@ func (s *Storage) CreateReportFile(activeReport *ActiveReport) error {
 
 // WriteToReportFile will append to an active report file
 func (s *Storage) WriteToReportFile(activeReport *ActiveReport, data []byte) error {
-	path := filepath.Join(s.incomingDir, activeReport.IncomingFilename())
+	path := filepath.Join(s.IncomingDir(), activeReport.IncomingFilename())
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0750)
 	if err != nil {
 		return err
@@ -73,7 +81,7 @@ func (s *Storage) WriteToReportFile(activeReport *ActiveReport, data []byte) err
 
 // CloseReportFile wll move the report file from incoming into the sync directory
 func (s *Storage) CloseReportFile(activeReport *ActiveReport) error {
-	srcPath := filepath.Join(s.incomingDir, activeReport.IncomingFilename())
+	srcPath := filepath.Join(s.IncomingDir(), activeReport.IncomingFilename())
 	fi, err := os.Stat(srcPath)
 	if err != nil {
 		return err
@@ -88,7 +96,7 @@ func (s *Storage) CloseReportFile(activeReport *ActiveReport) error {
 		log.WithError(err).Error("failed to generate filename")
 		return err
 	}
-	dstPath := filepath.Join(s.syncDir, reportFilename)
+	dstPath := filepath.Join(s.SyncDir(), reportFilename)
 	return os.Rename(srcPath, dstPath)
 }
 
