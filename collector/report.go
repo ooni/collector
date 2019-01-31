@@ -13,18 +13,15 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/benbjohnson/clock"
 	"github.com/rs/xid"
 )
 
-// Clock should be used in every time related function call to support testing
-// time related functions.
-var Clock = clock.New()
-
 var activeReports = make(map[string]*ActiveReport)
 
-// expiryTimeDuration is after how much time a report expires
-var expiryTimeDuration = time.Duration(8) * time.Hour
+// GetExpiryTimeDuration is after how much time a report expires
+var GetExpiryTimeDuration = func() time.Duration {
+	return time.Duration(8) * time.Hour
+}
 
 // TimestampFormat is the string format for a timestamp, useful for generating
 // report ids
@@ -33,16 +30,18 @@ const TimestampFormat = "20060102T150405Z"
 // GenReportID generates a new report id
 func GenReportID() string {
 	return fmt.Sprintf("%s_%s_%s",
-		Clock.Now().UTC().Format(TimestampFormat),
+		time.Now().UTC().Format(TimestampFormat),
 		"AS00",
 		RandomStr(50),
 	)
 }
 
+// NewActiveReport creates an ActiveReport used to track reports that are
+// currently in progress.
 func NewActiveReport(format string) *ActiveReport {
 	return &ActiveReport{
 		ReportID:     GenReportID(),
-		CreationTime: Clock.Now().UTC(),
+		CreationTime: time.Now().UTC(),
 		Format:       format,
 		IsEmpty:      true,
 	}
@@ -66,7 +65,7 @@ type ActiveReport struct {
 
 	Path        string
 	IsEmpty     bool
-	expiryTimer *clock.Timer
+	expiryTimer *time.Timer
 	mutex       sync.Mutex
 }
 
@@ -175,7 +174,7 @@ func CreateNewReport(store *Storage, format string) (string, error) {
 		log.WithError(err).Error("failed to create a report file")
 		return "", err
 	}
-	activeReport.expiryTimer = Clock.AfterFunc(expiryTimeDuration, func() {
+	activeReport.expiryTimer = time.AfterFunc(GetExpiryTimeDuration(), func() {
 		CloseReport(store, activeReport.ReportID)
 	})
 	activeReports[activeReport.ReportID] = activeReport
@@ -229,7 +228,7 @@ func WriteEntry(store *Storage, reportID string, entry *MeasurementEntry) (strin
 		return "", ErrReportNotFound
 	}
 	activeReport.mutex.Lock()
-	activeReport.expiryTimer.Reset(expiryTimeDuration)
+	activeReport.expiryTimer.Reset(GetExpiryTimeDuration())
 
 	// We check this again to avoid a race
 	if _, ok := activeReports[reportID]; !ok {
@@ -324,7 +323,7 @@ func ReloadActiveReports(store *Storage) error {
 			log.WithError(err).Errorf("failed to load file: %s", file.Name())
 			return err
 		}
-		ar.expiryTimer = Clock.AfterFunc(expiryTimeDuration, func() {
+		ar.expiryTimer = time.AfterFunc(GetExpiryTimeDuration(), func() {
 			CloseReport(store, ar.ReportID)
 		})
 		activeReports[ar.ReportID] = ar

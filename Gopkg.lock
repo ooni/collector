@@ -14,27 +14,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:0ad5484a25fbd88409bae8b8b19134135fe73d3cb00e45d3255280b2ab975fcc"
-  name = "github.com/benbjohnson/clock"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "7dc76406b6d3c05b5f71a86293cbcf3c4ea03b19"
-
-[[projects]]
-  branch = "master"
   digest = "1:d6afaeed1502aa28e80a4ed0981d570ad91b2579193404256ce672ed0a609e0d"
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
   pruneopts = "UT"
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
-
-[[projects]]
-  branch = "master"
-  digest = "1:5fe3f6ede1c208a2efd3b78fe4df0306aa9624edd39476143d14f0326e5a8d29"
-  name = "github.com/facebookgo/clock"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "600d898af40aa09a7a93ecb9265d87b0504b6f03"
 
 [[projects]]
   branch = "master"
@@ -357,7 +341,6 @@
   input-imports = [
     "github.com/apex/log",
     "github.com/apex/log/handlers/cli",
-    "github.com/benbjohnson/clock",
     "github.com/facebookgo/grace/gracehttp",
     "github.com/gin-gonic/gin",
     "github.com/rs/xid",

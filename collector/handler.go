@@ -26,6 +26,7 @@ type CreateReportReq struct {
 	ProbeIP       string   `json:"probe_ip,omitempty"`
 }
 
+var supportedFormats = []string{"json"}
 var softwareNameRegexp = regexp.MustCompile("^[0-9A-Za-z_\\.+-]+$")
 var testNameRegexp = regexp.MustCompile("^[a-zA-Z0-9_\\- ]+$")
 var probeASNRegexp = regexp.MustCompile("^AS[0-9]{1,10}$")
@@ -42,17 +43,17 @@ func CreateReportHandler(c *gin.Context) {
 		return
 	}
 	if req.Format == "" {
-		req.Format = "json"
+		req.Format = supportedFormats[0]
 	}
-	if req.Format != "json" && req.Format != "yaml" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid format. Must be either json or yaml"})
+	if stringInSlice(req.Format, supportedFormats) != true {
+		c.JSON(http.StatusNotAcceptable, gin.H{"error": "invalid format. Must be either json or yaml"})
 		return
 	}
 
 	reportID, err := CreateNewReport(store, req.Format)
 	if err != nil {
 		// XXX check this against the spec
-		c.JSON(http.StatusBadRequest, gin.H{
+		c.JSON(http.StatusNotAcceptable, gin.H{
 			"error": "invalid request",
 		})
 		return
@@ -61,7 +62,7 @@ func CreateReportHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"backend_version":   Version,
 		"report_id":         reportID,
-		"supported_formats": []string{"json"},
+		"supported_formats": supportedFormats,
 	})
 	return
 }

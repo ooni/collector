@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,6 +19,20 @@ func mapFromJSON(data []byte) map[string]interface{} {
 	var result interface{}
 	json.Unmarshal(data, &result)
 	return result.(map[string]interface{})
+}
+
+func performRequestJSON(r http.Handler, method, path string, reqJSON interface{}) (*httptest.ResponseRecorder, error) {
+	body, err := json.Marshal(reqJSON)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(method, path, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w, nil
 }
 
 func createReport(r http.Handler) (*httptest.ResponseRecorder, error) {
@@ -30,17 +45,7 @@ func createReport(r http.Handler) (*httptest.ResponseRecorder, error) {
 		DataFormatVersion: "0.2.0",
 		Format:            "json",
 	}
-	body, err := json.Marshal(createReq)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest("POST", "/report", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	return w, nil
+	return performRequestJSON(r, "POST", "/report", createReq)
 }
 
 type UpdateReportReq struct {
@@ -53,27 +58,11 @@ func updateReport(r http.Handler, reportID string, content interface{}) (*httpte
 		Format:  "json",
 		Content: content,
 	}
-	body, err := json.Marshal(updateReq)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest("POST", fmt.Sprintf("/report/%s", reportID), bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	return w, nil
+	return performRequestJSON(r, "POST", fmt.Sprintf("/report/%s", reportID), updateReq)
 }
 
 func closeReport(r http.Handler, reportID string) (*httptest.ResponseRecorder, error) {
-	req, err := http.NewRequest("POST", fmt.Sprintf("/report/%s/close", reportID), nil)
-	if err != nil {
-		return nil, err
-	}
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	return w, nil
+	return performRequestJSON(r, "POST", fmt.Sprintf("/report/%s/close", reportID), nil)
 }
 
 func checkDirItemCount(t *testing.T, dirPath string, expected int) {
@@ -178,4 +167,48 @@ func TestReportLifeCycle(t *testing.T) {
 
 	checkDirItemCount(t, ct.IncomingDir(), 0)
 	checkDirItemCount(t, ct.SyncDir(), 1)
+}
+
+func TestInvalidFormat(t *testing.T) {
+	ct, err := NewCollectorTest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(ct.ReportDir)
+
+	createReq := CreateReportReq{
+		Format: "yaml",
+	}
+	w, err := performRequestJSON(ct.Router, "POST", "/report", createReq)
+	if err != nil {
+		t.Error(err)
+	}
+	if w.Code != 406 {
+		t.Error("did not find valid error code")
+	}
+}
+
+func TestReportsWillExpire(t *testing.T) {
+	ct, err := NewCollectorTest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(ct.ReportDir)
+
+	GetExpiryTimeDuration = func() time.Duration {
+		return time.Microsecond
+	}
+
+	w, err := createReport(ct.Router)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := mapFromJSON(w.Body.Bytes())
+	reportID := resp["report_id"].(string)
+	checkReportIncoming(t, ct, reportID)
+
+	time.Sleep(1 * time.Second)
+
+	checkDirItemCount(t, ct.IncomingDir(), 0)
+	checkDirItemCount(t, ct.SyncDir(), 0)
 }
