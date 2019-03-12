@@ -1,15 +1,14 @@
-package middleware
+package collector
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/ooni/collector/collector/storage"
 )
 
 // GinStorageMiddleware a database aware middleware.
 // It will set the Storage property, that can be accessed via:
-// storage := c.MustGet("Storage").(*storage.Storage)
+// storage := c.MustGet("Storage").(*Storage)
 type GinStorageMiddleware struct {
-	Storage *storage.Storage
+	Storage *Storage
 }
 
 // MiddlewareFunc this is what you register as the middleware, like this:
@@ -22,7 +21,7 @@ func (mw *GinStorageMiddleware) MiddlewareFunc() gin.HandlerFunc {
 }
 
 // InitStorageMiddleware create the middleware that injects the storage backend
-func InitStorageMiddleware(s *storage.Storage) (*GinStorageMiddleware, error) {
+func InitStorageMiddleware(s *Storage) (*GinStorageMiddleware, error) {
 	if err := s.Init(); err != nil {
 		return nil, err
 	}

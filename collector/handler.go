@@ -1,22 +1,13 @@
-package handler
+package collector
 
 import (
 	"errors"
 	"net/http"
 	"regexp"
 
-	apexLog "github.com/apex/log"
+	"github.com/apex/log"
 	"github.com/gin-gonic/gin"
-	"github.com/ooni/collector/collector/info"
-	"github.com/ooni/collector/collector/report"
-	"github.com/ooni/collector/collector/storage"
-	"github.com/prometheus/client_golang/prometheus"
 )
-
-var log = apexLog.WithFields(apexLog.Fields{
-	"pkg": "handler",
-	"cmd": "ooni-collector",
-})
 
 // CreateReportRequest what a client sends as a request to create a new report
 type CreateReportRequest struct {
@@ -30,7 +21,7 @@ type CreateReportRequest struct {
 
 var softwareNameRegexp = regexp.MustCompile("^[0-9A-Za-z_\\.+-]+$")
 var testNameRegexp = regexp.MustCompile("^[a-zA-Z0-9_\\- ]+$")
-var probeASNRegexp = regexp.MustCompile("^AS[0-9]+$")
+var probeASNRegexp = regexp.MustCompile("^AS[0-9]{1,10}$")
 
 func validateRequest(req *CreateReportRequest) error {
 	if softwareNameRegexp.MatchString(req.SoftwareName) != true {
@@ -47,7 +38,7 @@ func validateRequest(req *CreateReportRequest) error {
 
 // CreateReportHandler for report creation
 func CreateReportHandler(c *gin.Context) {
-	store := c.MustGet("Storage").(*storage.Storage)
+	store := c.MustGet("Storage").(*Storage)
 
 	var req CreateReportRequest
 
@@ -60,7 +51,7 @@ func CreateReportHandler(c *gin.Context) {
 		return
 	}
 
-	reportID, err := report.CreateNewReport(store, req.TestName, req.ProbeASN, req.SoftwareName, req.SoftwareVersion)
+	reportID, err := CreateNewReport(store, req.TestName, req.ProbeASN, req.SoftwareName, req.SoftwareVersion)
 	if err != nil {
 		// XXX check this against the spec
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -70,7 +61,7 @@ func CreateReportHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"backend_version":   info.Version,
+		"backend_version":   Version,
 		"report_id":         reportID,
 		"supported_formats": []string{"json"},
 	})
@@ -87,15 +78,15 @@ func DeprecatedUpdateReportHandler(c *gin.Context) {
 
 // UpdateReportRequest is used to update a report
 type UpdateReportRequest struct {
-	Content report.MeasurementEntry `json:"content" binding:"required"`
-	Format  string                  `json:"format"`
+	Content MeasurementEntry `json:"content" binding:"required"`
+	Format  string           `json:"format"`
 }
 
 // UpdateReportHandler appends to an open report
 func UpdateReportHandler(c *gin.Context) {
 	var err error
 
-	store := c.MustGet("Storage").(*storage.Storage)
+	store := c.MustGet("Storage").(*Storage)
 	reportID := c.Param("reportID")
 
 	var req UpdateReportRequest
@@ -105,9 +96,9 @@ func UpdateReportHandler(c *gin.Context) {
 	}
 	entry := req.Content
 
-	measurementID, meta, err := report.WriteEntry(store, reportID, &entry)
+	measurementID, err := WriteEntry(store, reportID, &entry)
 	if err != nil {
-		if err == storage.ErrReportNotFound {
+		if err == ErrReportNotFound {
 			log.WithError(err).Debug("report not found error")
 			// XXX use the correct return value
 			c.JSON(http.StatusNotFound, gin.H{
@@ -118,8 +109,9 @@ func UpdateReportHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	platformMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.Platform).Inc()
-	countryMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.ProbeCC).Inc()
+	// XXX temporarily disabled
+	//platformMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.Platform).Inc()
+	//countryMetric.MetricCollector.(*prometheus.CounterVec).WithLabelValues(meta.ProbeCC).Inc()
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":         "success",
@@ -130,10 +122,10 @@ func UpdateReportHandler(c *gin.Context) {
 
 // CloseReportHandler moves the report to the report-dir
 func CloseReportHandler(c *gin.Context) {
-	store := c.MustGet("Storage").(*storage.Storage)
+	store := c.MustGet("Storage").(*Storage)
 	reportID := c.Param("reportID")
 
-	err := report.CloseReport(store, reportID)
+	err := CloseReport(store, reportID)
 	if err != nil {
 		// XXX return proper error
 		c.JSON(http.StatusNotAcceptable, gin.H{
@@ -150,9 +142,9 @@ func CloseReportHandler(c *gin.Context) {
 // SubmitMeasurementHandler is a handler for submitting a measurement in a
 // single request
 func SubmitMeasurementHandler(c *gin.Context) {
-	store := c.MustGet("Storage").(*storage.Storage)
+	store := c.MustGet("Storage").(*Storage)
 	var (
-		entry    report.MeasurementEntry
+		entry    MeasurementEntry
 		reportID string
 	)
 
@@ -175,7 +167,7 @@ func SubmitMeasurementHandler(c *gin.Context) {
 		})
 	}
 	if reportID == "" {
-		rid, err := report.CreateNewReport(store, createReq.TestName,
+		rid, err := CreateNewReport(store, createReq.TestName,
 			createReq.ProbeASN, createReq.SoftwareName, createReq.SoftwareVersion)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -184,14 +176,14 @@ func SubmitMeasurementHandler(c *gin.Context) {
 		}
 		reportID = rid
 	}
-	measurementID, _, err := report.WriteEntry(store, reportID, &entry)
+	measurementID, err := WriteEntry(store, reportID, &entry)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
 		})
 	}
 	if shouldClose == true {
-		report.CloseReport(store, reportID)
+		CloseReport(store, reportID)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"report_id":      reportID,

@@ -2,12 +2,6 @@
 
 
 [[projects]]
-  branch = "master"
-  name = "github.com/AndreasBriese/bbloom"
-  packages = ["."]
-  revision = "28f7e881ca57bc00e028f9ede9f0d9104cfeef5e"
-
-[[projects]]
   name = "github.com/apex/log"
   packages = [
     ".",
@@ -58,25 +52,6 @@
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
-
-[[projects]]
-  name = "github.com/dgraph-io/badger"
-  packages = [
-    ".",
-    "options",
-    "protos",
-    "skl",
-    "table",
-    "y"
-  ]
-  revision = "3ff1bfbb11c02c78c11269096669396c2d2cbbd3"
-  version = "v1.5.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/dgryski/go-farm"
-  packages = ["."]
-  revision = "2de33835d10275975374b37b2dcfd22c9020a1f5"
 
 [[projects]]
   branch = "master"
@@ -134,10 +109,22 @@
   version = "v1.37.0"
 
 [[projects]]
+  name = "github.com/go-stack/stack"
+  packages = ["."]
+  revision = "2fee6af1a9795aafbe0253a0cfbdf668e1fb8a9a"
+  version = "v1.8.0"
+
+[[projects]]
   name = "github.com/golang/protobuf"
   packages = ["proto"]
   revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
   version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/golang/snappy"
+  packages = ["."]
+  revision = "2e65f85255dbc3072edf28d6b5b8efc472979f5a"
 
 [[projects]]
   branch = "master"
@@ -190,6 +177,65 @@
   name = "github.com/mitchellh/mapstructure"
   packages = ["."]
   revision = "00c29f56e2386353d58c599509e8dc3801b0d716"
+
+[[projects]]
+  name = "github.com/mongodb/mongo-go-driver"
+  packages = [
+    "bson",
+    "bson/bsoncodec",
+    "bson/decimal",
+    "bson/elements",
+    "bson/internal/llbson",
+    "bson/objectid",
+    "bson/parser",
+    "bson/parser/ast",
+    "core/address",
+    "core/auth",
+    "core/auth/internal/gssapi",
+    "core/command",
+    "core/compressor",
+    "core/connection",
+    "core/connstring",
+    "core/description",
+    "core/dispatch",
+    "core/event",
+    "core/option",
+    "core/readconcern",
+    "core/readpref",
+    "core/result",
+    "core/session",
+    "core/tag",
+    "core/topology",
+    "core/uuid",
+    "core/version",
+    "core/wiremessage",
+    "core/writeconcern",
+    "internal",
+    "mongo",
+    "mongo/aggregateopt",
+    "mongo/bulkwriteopt",
+    "mongo/changestreamopt",
+    "mongo/clientopt",
+    "mongo/collectionopt",
+    "mongo/countopt",
+    "mongo/dbopt",
+    "mongo/deleteopt",
+    "mongo/distinctopt",
+    "mongo/dropcollopt",
+    "mongo/findopt",
+    "mongo/indexopt",
+    "mongo/insertopt",
+    "mongo/listcollectionopt",
+    "mongo/listdbopt",
+    "mongo/mongoopt",
+    "mongo/replaceopt",
+    "mongo/runcmdopt",
+    "mongo/sessionopt",
+    "mongo/transactionopt",
+    "mongo/updateopt"
+  ]
+  revision = "518f2246cd0d376a473b93baaee3942d99e44d0f"
+  version = "v0.0.16"
 
 [[projects]]
   name = "github.com/pelletier/go-toml"
@@ -298,6 +344,18 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/xdg/scram"
+  packages = ["."]
+  revision = "7eeb5667e42c09cb51bf7b7c28aea8c56767da90"
+
+[[projects]]
+  name = "github.com/xdg/stringprep"
+  packages = ["."]
+  revision = "bd625b8dc1e3b0f57412280ccbcc317f0c69d8db"
+  version = "v1.0.0"
+
+[[projects]]
+  branch = "master"
   name = "github.com/zsais/go-gin-prometheus"
   packages = ["."]
   revision = "3f93884fa240fd102425d65ce9781e561ba40496"
@@ -305,18 +363,23 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["ssh/terminal"]
+  packages = [
+    "pbkdf2",
+    "ssh/terminal"
+  ]
   revision = "df8d4716b3472e4a531c33cedbe537dae921a1a9"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/net"
-  packages = [
-    "context",
-    "internal/timeseries",
-    "trace"
-  ]
+  packages = ["context"]
   revision = "1e491301e022f8f977054da4c2d852decd59571f"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/sync"
+  packages = ["semaphore"]
+  revision = "1d60e4601c6fd243af51cc01ddf169918a5407ca"
 
 [[projects]]
   branch = "master"
@@ -355,6 +418,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7265806dfa77514bc7f673af90c925312a2ae8e2de85fb22eed03926fab4cf81"
+  inputs-digest = "7e4a193b5c43805bf3063c7f13a7dcebd8d81797f6014e0b61cfccd1c29c830e"
   solver-name = "gps-cdcl"
   solver-version = 1
