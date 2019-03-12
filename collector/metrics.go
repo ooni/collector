@@ -1,4 +1,4 @@
-package handler
+package collector
 
 import ginprometheus "github.com/zsais/go-gin-prometheus"
 
