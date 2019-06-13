@@ -35,7 +35,8 @@ func BindAPI(router *gin.Engine) error {
 	v1.POST("/report", CreateReportHandler)
 	v1.POST("/report/:reportID", UpdateReportHandler)
 	v1.POST("/report/:reportID/close", CloseReportHandler)
-	// XXX not implemented
+	
+	// TODO(bassosimone): disabled for the current MVP, to be re-enabled ASAP
 	// v1.POST("/measurement", SubmitMeasurementHandler)
 	return nil
 }
