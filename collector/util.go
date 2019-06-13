@@ -12,3 +12,12 @@ func RandomStr(n int) string {
 	}
 	return string(b)
 }
+
+func stringInSlice(s string, l []string) bool {
+	for _, x := range l {
+		if s == x {
+			return true
+		}
+	}
+	return false
+}

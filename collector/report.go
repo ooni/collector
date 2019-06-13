@@ -1,26 +1,132 @@
 package collector
 
 import (
-	"context"
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/apex/log"
-	"github.com/mongodb/mongo-go-driver/bson"
-	"github.com/ooni/collector/collector/aws"
 	"github.com/rs/xid"
-	"github.com/spf13/viper"
 )
 
-// expiryTimers is a map of timers keyed to the ReportID. These are used to
-// ensure that after a certain amount of time has elapsed reports are closed
-var expiryTimers = make(map[string]*time.Timer)
+// GetExpiryTimeDuration is after how much time a report expires
+var GetExpiryTimeDuration = func() time.Duration {
+	return time.Duration(8) * time.Hour
+}
 
-// expiryTimeDuration is after how much time a report expires
-var expiryTimeDuration = time.Duration(8) * time.Hour
+// TimestampFormat is the string format for a timestamp, useful for generating
+// report ids
+const TimestampFormat = "20060102T150405Z"
+
+// GenReportID generates a new report id
+func GenReportID() string {
+	return fmt.Sprintf("%s_%s_%s",
+		time.Now().UTC().Format(TimestampFormat),
+		"AS00",
+		RandomStr(50),
+	)
+}
+
+// NewActiveReport creates an ActiveReport used to track reports that are
+// currently in progress.
+func NewActiveReport(format string) *ActiveReport {
+	return &ActiveReport{
+		ReportID:     GenReportID(),
+		CreationTime: time.Now().UTC(),
+		Format:       format,
+		IsEmpty:      true,
+	}
+}
+
+// ActiveReport stores metadata about an active report. The metadat is immutable
+// across the lifecycle of a report submission
+type ActiveReport struct {
+	// These are required for generating the filename
+	ReportID     string    `json:"report_id"`
+	CreationTime time.Time `json:"creation_time"`
+	ProbeASN     string    `json:"probe_asn"`
+	ProbeCC      string    `json:"probe_cc"`
+	TestName     string    `json:"test_name"`
+	Format       string
+
+	// These are for collecting metrics
+	Platform        string `json:"platform"`
+	SoftwareName    string `json:"software_name"`
+	SoftwareVersion string `json:"software_version"`
+
+	Path        string
+	IsEmpty     bool
+	expiryTimer *time.Timer
+	mutex       sync.Mutex
+}
+
+func (a *ActiveReport) SetFromEntry(e *MeasurementEntry) error {
+	a.ProbeCC = e.ProbeCC
+	a.ProbeASN = e.ProbeASN
+	a.TestName = e.TestName
+	if e.Annotations != nil {
+		annotations := e.Annotations.(map[string]interface{})
+		platform, ok := annotations["platform"].(string)
+		if ok {
+			a.Platform = platform
+		}
+	}
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Validate checks that we have a valid report submitted
+func (a *ActiveReport) Validate() error {
+	if testNameRegexp.MatchString(a.TestName) != true {
+		return errors.New("invalid \"test_name\" field")
+	}
+	if probeASNRegexp.MatchString(a.ProbeASN) != true {
+		return errors.New("invalid \"probe_asn\" field")
+	}
+	if probeCCRegexp.MatchString(a.ProbeCC) != true {
+		return errors.New("invalid \"probe_cc\" field")
+	}
+	if stringInSlice(a.Format, supportedFormats) != true {
+		return fmt.Errorf("invalid \"format\" field, %s", a.Format)
+	}
+	return nil
+}
+
+// IncomingFilename determines the filename of an incoming report
+func (a *ActiveReport) IncomingFilename() string {
+	if stringInSlice(a.Format, supportedFormats) != true {
+		// Defensive coding
+		panic("an unexpected value for format was found. Bailing...")
+	}
+	return fmt.Sprintf("%s.%s",
+		a.ReportID,
+		a.Format)
+}
+
+// SyncFilename creates a filename in the sync directory of the active report
+func (a *ActiveReport) SyncFilename() (string, error) {
+	// Defensive coding.
+	if err := a.Validate(); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%s-%s-%s-%s-%s-probe-0.2.0.%s",
+		a.CreationTime.Format(TimestampFormat),
+		a.TestName,
+		a.ReportID,
+		a.ProbeASN,
+		a.ProbeCC,
+		a.Format), nil
+}
 
 // BackendExtra is serverside extra metadata
 type BackendExtra struct {
@@ -29,30 +135,11 @@ type BackendExtra struct {
 	ReportID       string    `json:"report_id" bson:"report_id"`
 }
 
-// Metadata is metadata about a report
-type Metadata struct {
-	ReportID        string    `json:"report_id" bson:"report_id"`
-	IsClosed        bool      `json:"is_closed" bson:"is_closed"`
-	CreationTime    time.Time `json:"creation_time" bson:"creation_time"`
-	LastUpdateTime  time.Time `json:"last_update_time" bson:"last_update_time"`
-	ProbeASN        string    `json:"probe_asn" bson:"probe_asn"`
-	ProbeCC         string    `json:"probe_cc" bson:"probe_cc"`
-	Platform        string    `json:"platform" bson:"platform"`
-	TestName        string    `json:"test_name" bson:"test_name"`
-	SoftwareName    string    `json:"software_name" bson:"software_name"`
-	SoftwareVersion string    `json:"software_version" bson:"software_version"`
-	EntryCount      int64     `json:"entry_count" bson:"entry_count"`
-}
-
-func NewMetadata() *Metadata {
-	return &Metadata{}
-}
-
 // MeasurementEntry is the structure of measurements submitted by an OONI Probe client
 type MeasurementEntry struct {
 	// These values are added by the pipeline
-	BucketDate     string `json:"bucket_date"`
-	ReportFilename string `json:"report_filename"`
+	// BucketDate     string `json:"bucket_date"`
+	// ReportFilename string `json:"report_filename"`
 
 	ID                   string       `json:"id"`
 	ReportID             string       `json:"report_id"`
@@ -78,138 +165,44 @@ type MeasurementEntry struct {
 	TestRuntime          float64      `json:"test_runtime"`
 }
 
-// TimestampFormat is the string format for a timestamp, useful for generating
-// report ids
-const TimestampFormat = "20060102T150405Z"
-
-// GenReportID generates a new report id
-func GenReportID(asn string) string {
-	return fmt.Sprintf("%s_%s_%s",
-		time.Now().UTC().Format(TimestampFormat),
-		asn,
-		RandomStr(50),
-	)
-}
-
 // CreateNewReport creates a new report
-func CreateNewReport(store *Storage, testName string, probeASN string, softwareName string, softwareVersion string) (string, error) {
-	reportID := GenReportID(probeASN)
-	meta := Metadata{
-		ReportID:        reportID,
-		TestName:        testName,
-		ProbeASN:        probeASN,
-		ProbeCC:         "",
-		Platform:        "",
-		SoftwareName:    softwareName,
-		SoftwareVersion: softwareVersion,
-		CreationTime:    time.Now().UTC(),
-		LastUpdateTime:  time.Now().UTC(),
-		IsClosed:        false,
-	}
-	_, err := store.Client.
-		Database("collector").
-		Collection("reports").
-		InsertOne(context.Background(), meta)
+func CreateNewReport(store *Storage, format string) (string, error) {
+	activeReport := NewActiveReport(format)
+	// XXX put the report metadata into an activeReports in memory map
+	err := store.CreateReportFile(activeReport)
 	if err != nil {
-		log.WithError(err).Error("failed to allocate a ReportID")
+		log.WithError(err).Error("failed to create a report file")
 		return "", err
 	}
-	return meta.ReportID, nil
-}
-
-// SQSMessage is the message sent to SQS
-type SQSMessage struct {
-	ReportID     string
-	ReportFile   string
-	TestName     string
-	CreationTime time.Time
-	EntryCount   int64
-	CollectorFQN string
-}
-
-func sendMessageToSQS(meta *Metadata) {
-	message := SQSMessage{
-		ReportID:     meta.ReportID,
-		TestName:     meta.TestName,
-		CreationTime: meta.CreationTime,
-		EntryCount:   meta.EntryCount,
-		CollectorFQN: viper.GetString("api.fqn"),
-	}
-	value, err := json.Marshal(message)
-	if err != nil {
-		log.WithError(err).Error("failed to serialize meta")
-		return
-	}
-	_, err = aws.SendMessage(aws.Session, string(value), "report")
-	if err != nil {
-		log.WithError(err).Error("failed to publish to aws SQS")
-		return
-	}
-}
-
-func uploadToS3(meta *Metadata) {
-	/*
-		XXX
-			filename := filepath.Base(meta.ReportFilePath)
-			bucket := viper.GetString("aws.s3-bucket")
-			prefix := fmt.Sprintf("%s/%s",
-				viper.GetString("aws.s3-prefix"),
-				time.Now().UTC().Format("2006-01-02"))
-			// We place files inside the directory $PREFIX/$YEAR-$MONTH-$DAY/
-			key := fmt.Sprintf("%s/%s", prefix, filename)
-			err := aws.UploadFile(aws.Session, meta.ReportFilePath, bucket, key)
-			if err != nil {
-				log.WithError(err).Errorf("failed to upload to s3://%s/%s", bucket, key)
-				return
-			}
-	*/
-}
-
-func performAWSTasks(meta *Metadata) {
-	sendMessageToSQS(meta)
-	uploadToS3(meta)
+	activeReport.expiryTimer = time.AfterFunc(GetExpiryTimeDuration(), func() {
+		CloseReport(store, activeReport.ReportID)
+	})
+	store.activeReports[activeReport.ReportID] = activeReport
+	return activeReport.ReportID, nil
 }
 
 // CloseReport marks the report as closed and moves it into the final reports folder
 func CloseReport(store *Storage, reportID string) error {
-	var err error
-
-	meta := NewMetadata()
-	reportFilter := bson.NewDocument(bson.EC.String("report_id", reportID))
-	err = store.Client.
-		Database("collector").
-		Collection("reports").
-		FindOne(context.Background(), reportFilter).
-		Decode(meta)
-	if err != nil {
-		log.WithError(err).Error("failed to find report_id")
-		return err
+	activeReport, ok := store.activeReports[reportID]
+	if !ok {
+		return ErrReportNotFound
 	}
-	if meta.IsClosed == true {
-		return ErrReportIsClosed
+	activeReport.mutex.Lock()
+	activeReport.expiryTimer.Stop()
+	defer activeReport.mutex.Unlock()
+
+	// We check this again to avoid a race
+	if _, ok := store.activeReports[reportID]; !ok {
+		return ErrReportNotFound
 	}
 
-	meta.IsClosed = true
-	_, err = store.Client.
-		Database("collector").
-		Collection("reports").
-		UpdateOne(
-			nil,
-			reportFilter,
-			bson.NewDocument(
-				bson.EC.SubDocumentFromElements("$set",
-					bson.EC.Boolean("is_closed", true),
-				),
-			),
-		)
+	err := store.CloseReportFile(activeReport)
 	if err != nil {
-		log.WithError(err).Error("failed to update report with is_closed=true")
+		log.WithError(err).Error("failed to close report")
 		return err
 	}
 
-	if aws.Session != nil {
-		go performAWSTasks(meta)
-	}
+	delete(store.activeReports, reportID)
 
 	return nil
 }
@@ -218,108 +211,121 @@ func genMeasurementID() string {
 	return xid.New().String()
 }
 
-func validateMetadata(meta *Metadata, entry *MeasurementEntry) error {
-	return nil
-}
-
-func addBackendExtra(meta *Metadata, entry *MeasurementEntry) string {
+func addBackendExtra(meta *ActiveReport, entry *MeasurementEntry) string {
 	measurementID := genMeasurementID()
 	entry.BackendVersion = Version
-	entry.BackendExtra.SubmissionTime = meta.LastUpdateTime
+	entry.BackendExtra.SubmissionTime = meta.CreationTime
 	entry.BackendExtra.ReportID = meta.ReportID
 	entry.BackendExtra.MeasurementID = measurementID
 	return measurementID
 }
 
-var probeCCRegexp = regexp.MustCompile("^[A-Z]{2}$")
-
 // WriteEntry will write an entry to report
 func WriteEntry(store *Storage, reportID string, entry *MeasurementEntry) (string, error) {
 	var err error
+	activeReport, ok := store.activeReports[reportID]
+	if !ok {
+		return "", ErrReportNotFound
+	}
+	activeReport.mutex.Lock()
+	activeReport.expiryTimer.Reset(GetExpiryTimeDuration())
+	defer activeReport.mutex.Unlock()
 
-	meta := NewMetadata()
-	reportFilter := bson.NewDocument(bson.EC.String("report_id", reportID))
-	err = store.Client.
-		Database("collector").
-		Collection("reports").
-		FindOne(context.Background(), reportFilter).
-		Decode(meta)
-	if err != nil {
-		return "", err
+	// We check this again to avoid a race
+	if _, ok := store.activeReports[reportID]; !ok {
+		return "", ErrReportNotFound
 	}
 
-	if meta.IsClosed == true {
-		return "", ErrReportIsClosed
-	}
-
-	// If the ProbeCC or Platform are the empty string it means it's the first
-	// entry so we should parse this from the measurement entry and add it to the
-	// metadata.
-	if meta.ProbeCC == "" {
-		if probeCCRegexp.MatchString(entry.ProbeCC) != true {
-			return "", errors.New("Invalid probe_cc")
-		}
-		meta.ProbeCC = entry.ProbeCC
-	}
-	if meta.Platform == "" && entry.Annotations != nil {
-		annotations := entry.Annotations.(map[string]interface{})
-		platform, ok := annotations["platform"].(string)
-		if ok {
-			meta.Platform = platform
+	if activeReport.IsEmpty == true {
+		err = activeReport.SetFromEntry(entry)
+		if err != nil {
+			log.WithError(err).Error("failed to set from entry")
+			return "", err
 		}
 	}
 
-	err = validateMetadata(meta, entry)
-	if err != nil {
-		log.WithError(err).Error("inconsistent metadata found")
-		return "", err
-	}
-	measurementID := addBackendExtra(meta, entry)
+	measurementID := addBackendExtra(activeReport, entry)
 	entryBytes, err := json.Marshal(entry)
 	if err != nil {
 		log.WithError(err).Error("could not serialize entry")
 		return "", err
 	}
-
-	_, err = store.Client.
-		Database("collector").
-		Collection("measurement_entries").
-		InsertOne(
-			context.Background(),
-			bson.NewDocument(
-				bson.EC.String("report_id", entry.ReportID),
-				bson.EC.String("measurement_id", measurementID),
-				bson.EC.Binary("json_bytes", entryBytes),
-			),
-		)
+	entryBytes = append(entryBytes, []byte("\n")...)
+	store.WriteToReportFile(activeReport, entryBytes)
 	if err != nil {
 		log.WithError(err).Error("failed to insert into measurements table")
 		return "", err
 	}
 
-	meta.LastUpdateTime = time.Now().UTC()
-	meta.EntryCount++
-
-	_, err = store.Client.
-		Database("collector").
-		Collection("reports").
-		UpdateOne(
-			nil,
-			reportFilter,
-			bson.NewDocument(
-				bson.EC.SubDocumentFromElements("$set",
-					bson.EC.DateTime("last_update_time",
-						meta.LastUpdateTime.UnixNano()/int64(time.Millisecond)),
-					bson.EC.Int64("entry_count", meta.EntryCount),
-					// XXX this is a bit of a silly thing to do on every entry
-					bson.EC.String("probe_cc", meta.ProbeCC),
-					bson.EC.String("platform", meta.Platform),
-				),
-			),
-		)
-	if err != nil {
-		log.WithError(err).Error("failed to update reports table")
-		return "", err
-	}
 	return measurementID, nil
+}
+
+// LoadActiveReportFromFile will load an incoming temporary report file and make
+// it into an ActiveReport
+func LoadActiveReportFromFile(path string) (*ActiveReport, error) {
+	filename := filepath.Base(path)
+	p := strings.Split(filename, ".")
+	if len(p) != 2 {
+		return nil, fmt.Errorf("Inconsistent filename: \"%s\"", filename)
+	}
+	reportID, format := p[0], p[1]
+	activeReport := ActiveReport{
+		ReportID: reportID,
+		Format:   format,
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		log.WithError(err).Errorf("failed to open active report from file: %s", path)
+		return nil, err
+	}
+	defer file.Close()
+
+	fi, err := file.Stat()
+	if err != nil {
+		log.WithError(err).Error("failed to stat active report file.")
+		return nil, err
+	}
+	activeReport.CreationTime = fi.ModTime().UTC()
+	if fi.Size() == 0 {
+		activeReport.IsEmpty = true
+		return &activeReport, nil
+	}
+	reader := bufio.NewReader(file)
+
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		log.WithError(err).Error("failed to read first entry of report.")
+		return nil, err
+	}
+	var entry MeasurementEntry
+	json.Unmarshal([]byte(line), &entry)
+	if err := activeReport.SetFromEntry(&entry); err != nil {
+		log.WithError(err).Error("failed to set from entry.")
+		return nil, err
+	}
+	return &activeReport, nil
+}
+
+// ReloadActiveReports will check the incoming dir to see if some incoming
+// reports need to be reloading. This makes it possible to restart the server
+// without loosing track of active reports.
+func ReloadActiveReports(store *Storage) error {
+	files, err := ioutil.ReadDir(store.IncomingDir())
+	if err != nil {
+		log.WithError(err).Error("failed to list incoming dir")
+		return err
+	}
+	for _, file := range files {
+		ar, err := LoadActiveReportFromFile(filepath.Join(store.IncomingDir(), file.Name()))
+		if err != nil {
+			log.WithError(err).Errorf("failed to load file: %s", file.Name())
+			return err
+		}
+		ar.expiryTimer = time.AfterFunc(GetExpiryTimeDuration(), func() {
+			CloseReport(store, ar.ReportID)
+		})
+		store.activeReports[ar.ReportID] = ar
+	}
+	return nil
 }

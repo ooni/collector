@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/ooni/collector/cmd"
-	"github.com/ooni/collector/collector/info"
+	"github.com/ooni/collector/collector"
 )
 
 var (
@@ -12,8 +12,8 @@ var (
 )
 
 func main() {
-	info.Version = version
-	info.CommitHash = commit
-	info.BuildDate = date
+	collector.Version = version
+	collector.CommitHash = commit
+	collector.BuildDate = date
 	cmd.Execute()
 }

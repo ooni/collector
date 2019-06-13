@@ -1,7 +1,6 @@
 package collector
 
 import (
-	"errors"
 	"net/http"
 	"regexp"
 
@@ -9,52 +8,52 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateReportRequest what a client sends as a request to create a new report
-type CreateReportRequest struct {
-	SoftwareName    string `json:"software_name"`
-	SoftwareVersion string `json:"software_version"`
-	TestName        string `json:"test_name" binding:""`
-	TestVersion     string `json:"test_version"`
-	ProbeASN        string `json:"probe_asn"`
-	Content         string `json:"content"`
+// CreateReportReq is a client request for the POST /report API endpoint
+type CreateReportReq struct {
+	SoftwareName      string `json:"software_name"`
+	SoftwareVersion   string `json:"software_version"`
+	ProbeASN          string `json:"probe_asn"`
+	ProbeCC           string `json:"probe_cc"`
+	TestName          string `json:"test_name"`
+	TestVersion       string `json:"test_version"`
+	DataFormatVersion string `json:"data_format_version"`
+	Format            string `json:"format"`
+	// The below fields are optional
+	TestStartTime string   `json:"test_start_time,omitempty"`
+	InputHashes   []string `json:"input_hashes,omitempty"`
+	TestHelper    string   `json:"test_helper,omitempty"`
+	Content       string   `json:"content,omitempty"`
+	ProbeIP       string   `json:"probe_ip,omitempty"`
 }
 
+var supportedFormats = []string{"json"}
 var softwareNameRegexp = regexp.MustCompile("^[0-9A-Za-z_\\.+-]+$")
 var testNameRegexp = regexp.MustCompile("^[a-zA-Z0-9_\\- ]+$")
 var probeASNRegexp = regexp.MustCompile("^AS[0-9]{1,10}$")
-
-func validateRequest(req *CreateReportRequest) error {
-	if softwareNameRegexp.MatchString(req.SoftwareName) != true {
-		return errors.New("Invalid software_name")
-	}
-	if testNameRegexp.MatchString(req.TestName) != true {
-		return errors.New("Invalid test_name")
-	}
-	if probeASNRegexp.MatchString(req.ProbeASN) != true {
-		return errors.New("Invalid probe_asn")
-	}
-	return nil
-}
+var probeCCRegexp = regexp.MustCompile("^[A-Z]{2}$")
 
 // CreateReportHandler for report creation
 func CreateReportHandler(c *gin.Context) {
 	store := c.MustGet("Storage").(*Storage)
 
-	var req CreateReportRequest
+	var req CreateReportReq
 
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := validateRequest(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if req.Format == "" {
+		req.Format = supportedFormats[0]
+	}
+	if stringInSlice(req.Format, supportedFormats) != true {
+		c.JSON(http.StatusNotAcceptable, gin.H{"error": "invalid format. Must be either json or yaml"})
 		return
 	}
 
-	reportID, err := CreateNewReport(store, req.TestName, req.ProbeASN, req.SoftwareName, req.SoftwareVersion)
+	reportID, err := CreateNewReport(store, req.Format)
 	if err != nil {
 		// XXX check this against the spec
-		c.JSON(http.StatusBadRequest, gin.H{
+		c.JSON(http.StatusNotAcceptable, gin.H{
 			"error": "invalid request",
 		})
 		return
@@ -63,7 +62,7 @@ func CreateReportHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"backend_version":   Version,
 		"report_id":         reportID,
-		"supported_formats": []string{"json"},
+		"supported_formats": supportedFormats,
 	})
 	return
 }
@@ -137,56 +136,4 @@ func CloseReportHandler(c *gin.Context) {
 		"status": "success",
 	})
 	return
-}
-
-// SubmitMeasurementHandler is a handler for submitting a measurement in a
-// single request
-func SubmitMeasurementHandler(c *gin.Context) {
-	store := c.MustGet("Storage").(*Storage)
-	var (
-		entry    MeasurementEntry
-		reportID string
-	)
-
-	shouldClose := c.DefaultQuery("close", "false") == "true"
-	if err := c.BindJSON(&entry); err != nil {
-		log.WithError(err).Error("failed to bindJSON")
-		return
-	}
-	reportID = entry.ReportID
-	createReq := CreateReportRequest{
-		SoftwareName:    entry.SoftwareName,
-		SoftwareVersion: entry.SoftwareVersion,
-		TestName:        entry.TestName,
-		TestVersion:     entry.TestVersion,
-		ProbeASN:        entry.ProbeASN,
-	}
-	if err := validateRequest(&createReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
-	}
-	if reportID == "" {
-		rid, err := CreateNewReport(store, createReq.TestName,
-			createReq.ProbeASN, createReq.SoftwareName, createReq.SoftwareVersion)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": err.Error(),
-			})
-		}
-		reportID = rid
-	}
-	measurementID, err := WriteEntry(store, reportID, &entry)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
-	}
-	if shouldClose == true {
-		CloseReport(store, reportID)
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"report_id":      reportID,
-		"measurement_id": measurementID,
-	})
 }
